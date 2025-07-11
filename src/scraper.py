@@ -25,7 +25,7 @@ class KingArthurScraper:
         self.driver = None
         self.products: List[Dict] = []
         self.scraped_products: Set[str] = set()  # Track by SKU to avoid duplicates
-        self.target_count = 10
+        self.target_count = 123
         self.base_url = "https://shop.kingarthurbaking.com/graphql"
         self.session = requests.Session()
         
