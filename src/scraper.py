@@ -302,7 +302,7 @@ class KingArthurScraper:
                     product = {
                         "name": data_name or aria_label or "",
                         "sku": data_sku or "",
-                        "price": data_price or "",
+                        "price": float(data_price) or "",
                         "url": link or "",
                         "aria_label": aria_label or "",
                         "entity_id": entity_id or ""
@@ -434,6 +434,19 @@ class KingArthurScraper:
             
             # Process the comprehensive response
             enhanced_data = self.process_graphql_data(graphql_data)
+            
+            # Scrape sales information from product page
+            product_url = product.get('url')
+            if product_url:
+                sales_info = self.scrape_sales_info_from_page(product_url)
+                enhanced_data['sales_info'] = sales_info
+            else:
+                enhanced_data['sales_info'] = {
+                    "orig_price": "",
+                    "sr_only": "",
+                    "bulk_promo": "",
+                    "saving": ""
+                }
             
             # Merge with original product data (enhanced data takes precedence for conflicting keys)
             enhanced_product = {**product, **enhanced_data}
@@ -571,6 +584,101 @@ class KingArthurScraper:
             return None
         except Exception as e:
             logger.error(f"Unexpected error for entity {entity_id}: {e}")
+            return None
+
+    def scrape_sales_info_from_page(self, product_url: str) -> Dict:
+        """Scrape sales information from individual product page using requests."""
+        sales_info = {
+        }
+        
+        if not product_url:
+            return sales_info
+            
+        try:
+            # Fetch the product page HTML
+            logger.debug(f"Fetching product page: {product_url}")
+            response = self.session.get(product_url, timeout=10)
+            response.raise_for_status()
+            html_content = response.text
+            
+            # Extract orig-price
+            orig_price_match = re.search(r'<span class="orig-price">\$?([0-9,]+\.?[0-9]*)</span>', html_content)
+            if orig_price_match:
+                try:
+                    sales_info["orig_price"] = float(orig_price_match.group(1).replace(',', ''))
+                except ValueError:
+                    pass
+            
+            # Extract non-sale price (sr-only)
+            non_sale_match = re.search(r'<span[^>]*data-product-non-sale-price-without-tax[^>]*class="[^"]*price[^"]*price--non-sale[^"]*"[^>]*>(.*?)</span>', html_content, re.DOTALL)
+            if non_sale_match:
+                non_sale_content = non_sale_match.group(1)
+                # Extract the price, excluding the sr-only text
+                price_match = re.search(r'\$([0-9,]+\.?[0-9]*)', non_sale_content)
+                if price_match:
+                    try:
+                        sales_info["sr_only"] = float(price_match.group(1).replace(',', ''))
+                    except ValueError:
+                        pass
+            
+            # Extract bulk promo
+            bulk_promo_match = re.search(r'<span class="bulk-promo">([^<]+)</span>', html_content)
+            if bulk_promo_match:
+                sales_info["bulk_promo"] = bulk_promo_match.group(1).strip()
+            
+            # Extract saving amount
+            saving_match = re.search(r'<span[^>]*data-product-price-saved[^>]*class="[^"]*price[^"]*price--saving[^"]*"[^>]*>\s*\$?([0-9,]+\.?[0-9]*)', html_content, re.DOTALL)
+            if saving_match:
+                try:
+                    sales_info["saving"] = float(saving_match.group(1).replace(',', ''))
+                except ValueError:
+                    pass
+            
+            logger.debug(f"Scraped sales info: {sales_info}")
+            
+        except requests.exceptions.RequestException as e:
+            logger.debug(f"HTTP error fetching {product_url}: {e}")
+        except Exception as e:
+            logger.debug(f"Error scraping sales info from {product_url}: {e}")
+        
+        return sales_info
+
+    def fetch_yotpo_star_distribution(self, entity_id: int) -> Optional[Dict]:
+        """Fetch star distribution from Yotpo API."""
+        try:
+            yotpo_url = f"https://api-cdn.yotpo.com/v1/star_distribution/store/jBxzwSX3N9KsfOjGShwj5F4CVD59uGY0eH3z5j1x/product/{entity_id}"
+            
+            # Headers required by Yotpo API (from PowerShell example)
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",
+                "accept": "application/json",
+                "accept-encoding": "gzip, deflate, br, zstd",
+                "accept-language": "en-US,en;q=0.9",
+                "origin": "https://shop.kingarthurbaking.com",
+                "referer": "https://shop.kingarthurbaking.com/",
+                "sec-ch-ua": '"Not)A;Brand";v="8", "Chromium";v="138", "Google Chrome";v="138"',
+                "sec-ch-ua-mobile": "?0",
+                "sec-ch-ua-platform": '"Windows"',
+                "sec-fetch-dest": "empty",
+                "sec-fetch-mode": "cors",
+                "sec-fetch-site": "cross-site"
+            }
+            
+            response = requests.get(yotpo_url, timeout=10)
+            response.raise_for_status()
+            
+            star_distribution = response.json()
+            logger.debug(f"Successfully retrieved Yotpo star distribution for entity {entity_id}")
+            return star_distribution
+            
+        except requests.exceptions.RequestException as e:
+            logger.debug(f"Failed to fetch Yotpo star distribution for entity {entity_id}: {e}")
+            return None
+        except json.JSONDecodeError as e:
+            logger.debug(f"Failed to parse Yotpo response for entity {entity_id}: {e}")
+            return None
+        except Exception as e:
+            logger.debug(f"Unexpected error fetching Yotpo data for entity {entity_id}: {e}")
             return None
 
     def process_graphql_data(self, graphql_data: Dict) -> Dict:
@@ -741,10 +849,22 @@ class KingArthurScraper:
                 })
             processed_data['images'] = images
             
-            processed_data['review_summary'] = {
-                'number_of_reviews': custom_fields.get('_review_count'),
-                'average_rating': custom_fields.get('_review_avg_score')
+            # Build review summary with star distribution
+            review_summary = {
+                'number_of_reviews': int(custom_fields.get('_review_count')),
+                'average_rating': float(custom_fields.get('_review_avg_score'))
             }
+            
+            # Fetch and add star distribution from Yotpo
+            sku = graphql_data.get('sku')
+            if sku:
+                star_distribution = self.fetch_yotpo_star_distribution(int(sku))
+                if star_distribution:
+                    # Add star distribution to review summary
+                    for star_rating, count in star_distribution.items():
+                        review_summary[star_rating] = count
+            
+            processed_data['review_summary'] = review_summary
             
             return processed_data
             
