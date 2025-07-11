@@ -1,263 +1,293 @@
-import requests
-from bs4 import BeautifulSoup
 import json
 import time
 import logging
 from typing import List, Dict, Optional, Set
-from urllib.parse import urljoin, urlparse
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
+from selenium.common.exceptions import TimeoutException, NoSuchElementException
 import re
 
 from .config import settings
+
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class KingArthurScraper:
     def __init__(self):
-        self.session = requests.Session()
-        self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        })
-        self.scraped_urls: Set[str] = set()
+        self.driver = None
         self.products: List[Dict] = []
+        self.scraped_products: Set[str] = set()  # Track by SKU to avoid duplicates
+        self.target_count = 123
 
-    def get_page(self, url: str) -> Optional[BeautifulSoup]:
-        """Get a page with retry logic."""
-        for attempt in range(settings.max_retries):
-            try:
-                response = self.session.get(url, timeout=10)
-                response.raise_for_status()
-                return BeautifulSoup(response.content, 'html.parser')
-            except requests.RequestException as e:
-                logger.warning(f"Attempt {attempt + 1} failed for {url}: {e}")
-                if attempt < settings.max_retries - 1:
-                    time.sleep(settings.scraping_delay * (attempt + 1))
-                else:
-                    logger.error(f"Failed to fetch {url} after {settings.max_retries} attempts")
-                    return None
-
-    def extract_product_info(self, soup: BeautifulSoup, url: str) -> Optional[Dict]:
-        """Extract detailed product information from a product page."""
-        try:
-            product_info = {
-                'url': url,
-                'name': '',
-                'price': '',
-                'description': '',
-                'instructions': '',
-                'ingredients': '',
-                'nutrition': '',
-                'image_url': '',
-                'category': 'mixes',
-                'availability': '',
-                'rating': '',
-                'reviews_count': '',
-                'sku': '',
-                'size': '',
-                'features': []
+    def setup_driver(self):
+        """Set up Chrome WebDriver with optimized settings for speed."""
+        chrome_options = Options()
+        
+        # Speed optimizations
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+        chrome_options.add_argument("--disable-extensions")
+        chrome_options.add_argument("--disable-plugins")
+        chrome_options.add_argument("--disable-images")  # Don't load images for speed
+        chrome_options.add_argument("--disable-javascript")  # Disable JS if not needed
+        chrome_options.add_argument("--disable-gpu")
+        chrome_options.add_argument("--disable-background-timer-throttling")
+        chrome_options.add_argument("--disable-backgrounding-occluded-windows")
+        chrome_options.add_argument("--disable-renderer-backgrounding")
+        chrome_options.add_argument("--disable-features=TranslateUI")
+        chrome_options.add_argument("--disable-ipc-flooding-protection")
+        
+        # Performance settings
+        chrome_options.add_argument("--memory-pressure-off")
+        chrome_options.add_argument("--max_old_space_size=4096")
+        
+        # User agent
+        chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
+        
+        # Experimental options for speed
+        chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        chrome_options.add_experimental_option('useAutomationExtension', False)
+        chrome_options.add_experimental_option("prefs", {
+            "profile.default_content_setting_values": {
+                "images": 2,  # Block images
+                "plugins": 2,  # Block plugins
+                "popups": 2,  # Block popups
+                "geolocation": 2,  # Block location sharing
+                "notifications": 2,  # Block notifications
+                "media_stream": 2,  # Block media stream
             }
-
-            # Extract name
-            name_elem = soup.find('h1', class_='product-name') or soup.find('h1')
-            if name_elem:
-                product_info['name'] = name_elem.get_text().strip()
-
-            # Extract price
-            price_elem = soup.find('span', class_='price') or soup.find('span', class_='product-price')
-            if price_elem:
-                product_info['price'] = price_elem.get_text().strip()
-
-            # Extract description
-            desc_elem = soup.find('div', class_='product-description') or soup.find('div', class_='product-details')
-            if desc_elem:
-                product_info['description'] = desc_elem.get_text().strip()
-
-            # Extract instructions
-            instructions_elem = soup.find('div', class_='instructions') or soup.find('div', class_='directions')
-            if instructions_elem:
-                product_info['instructions'] = instructions_elem.get_text().strip()
-
-            # Extract ingredients
-            ingredients_elem = soup.find('div', class_='ingredients') or soup.find('div', class_='ingredient-list')
-            if ingredients_elem:
-                product_info['ingredients'] = ingredients_elem.get_text().strip()
-
-            # Extract nutrition information
-            nutrition_elem = soup.find('div', class_='nutrition') or soup.find('div', class_='nutritional-info')
-            if nutrition_elem:
-                product_info['nutrition'] = nutrition_elem.get_text().strip()
-
-            # Extract image URL
-            img_elem = soup.find('img', class_='product-image') or soup.find('img', {'alt': re.compile(r'.*product.*', re.I)})
-            if img_elem and img_elem.get('src'):
-                product_info['image_url'] = urljoin(settings.base_url, img_elem.get('src'))
-
-            # Extract SKU
-            sku_elem = soup.find('span', class_='sku') or soup.find('span', {'data-test': 'sku'})
-            if sku_elem:
-                product_info['sku'] = sku_elem.get_text().strip()
-
-            # Extract size/weight
-            size_elem = soup.find('span', class_='size') or soup.find('span', class_='weight')
-            if size_elem:
-                product_info['size'] = size_elem.get_text().strip()
-
-            # Extract availability
-            availability_elem = soup.find('span', class_='availability') or soup.find('span', class_='stock-status')
-            if availability_elem:
-                product_info['availability'] = availability_elem.get_text().strip()
-
-            # Extract rating
-            rating_elem = soup.find('span', class_='rating') or soup.find('div', class_='stars')
-            if rating_elem:
-                product_info['rating'] = rating_elem.get_text().strip()
-
-            # Extract reviews count
-            reviews_elem = soup.find('span', class_='reviews-count')
-            if reviews_elem:
-                product_info['reviews_count'] = reviews_elem.get_text().strip()
-
-            # Extract features/highlights
-            features_elem = soup.find('ul', class_='product-features') or soup.find('ul', class_='highlights')
-            if features_elem:
-                features = [li.get_text().strip() for li in features_elem.find_all('li')]
-                product_info['features'] = features
-
-            return product_info
-
-        except Exception as e:
-            logger.error(f"Error extracting product info from {url}: {e}")
-            return None
-
-    def get_product_links(self, soup: BeautifulSoup) -> List[str]:
-        """Extract all product links from the mixes category page."""
-        links = []
+        })
         
-        # Look for product links with various possible selectors
-        selectors = [
-            'a[href*="/product/"]',
-            'a[href*="/item/"]',
-            'a[href*="/mix"]',
-            '.product-item a',
-            '.product-card a',
-            '.product-link',
-            'a[data-test="product-link"]'
-        ]
-        
-        for selector in selectors:
-            elements = soup.select(selector)
-            for elem in elements:
-                href = elem.get('href')
-                if href:
-                    full_url = urljoin(settings.base_url, href)
-                    # Filter for mix-related products
-                    if 'mix' in full_url.lower() or 'mixes' in full_url.lower():
-                        links.append(full_url)
-        
-        return list(set(links))  # Remove duplicates
-
-    def scrape_category_page(self, url: str) -> List[str]:
-        """Scrape the mixes category page to get all product links."""
-        logger.info(f"Scraping category page: {url}")
-        soup = self.get_page(url)
-        if not soup:
-            return []
-        
-        product_links = self.get_product_links(soup)
-        logger.info(f"Found {len(product_links)} product links")
-        
-        # Look for pagination
-        next_page_elem = soup.find('a', class_='next') or soup.find('a', {'aria-label': 'Next'})
-        if next_page_elem and next_page_elem.get('href'):
-            next_page_url = urljoin(settings.base_url, next_page_elem.get('href'))
-            logger.info(f"Found next page: {next_page_url}")
-            product_links.extend(self.scrape_category_page(next_page_url))
-        
-        return product_links
-
-    def scrape_all_mixes(self) -> List[Dict]:
-        """Scrape all mixes from the King Arthur Baking website."""
-        logger.info("Starting to scrape King Arthur Baking mixes...")
-        
-        # Get all product links
-        product_links = self.scrape_category_page(settings.mixes_url)
-        
-        # Remove duplicates while preserving order
-        seen = set()
-        unique_links = []
-        for link in product_links:
-            if link not in seen:
-                seen.add(link)
-                unique_links.append(link)
-        
-        logger.info(f"Found {len(unique_links)} unique product links")
-        
-        # Scrape each product
-        products = []
-        for i, link in enumerate(unique_links):
-            logger.info(f"Scraping product {i+1}/{len(unique_links)}: {link}")
-            
-            soup = self.get_page(link)
-            if soup:
-                product_info = self.extract_product_info(soup, link)
-                if product_info and product_info['name']:  # Only add if we got valid data
-                    products.append(product_info)
-                    logger.info(f"Successfully scraped: {product_info['name']}")
-                else:
-                    logger.warning(f"Failed to extract product info from {link}")
-            
-            # Rate limiting
-            time.sleep(settings.scraping_delay)
-        
-        logger.info(f"Successfully scraped {len(products)} products")
-        return products
-
-    def save_to_json(self, products: List[Dict], filename: str = "mixes_data.json"):
-        """Save scraped data to JSON file, avoiding duplicates."""
         try:
-            # Check if file exists and load existing data
-            existing_data = []
+            service = Service(ChromeDriverManager().install())
+            self.driver = webdriver.Chrome(service=service, options=chrome_options)
+            self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+            
+            # Set page load timeout
+            self.driver.set_page_load_timeout(30)
+            self.driver.implicitly_wait(10)
+            
+            logger.info("Chrome WebDriver initialized successfully")
+        except Exception as e:
+            logger.error(f"Failed to initialize Chrome WebDriver: {e}")
+            raise
+
+    def scroll_and_load_products(self, max_scrolls: int = 50):
+        """Continuously scroll to load more products until we have 123 or reach max scrolls."""
+        scroll_count = 0
+        last_height = 0
+        no_new_products_count = 0
+        
+        while len(self.products) < self.target_count and scroll_count < max_scrolls:
             try:
-                with open(filename, 'r', encoding='utf-8') as f:
-                    existing_data = json.load(f)
-            except FileNotFoundError:
-                pass
+                # Get current products before scrolling
+                current_count = len(self.products)
+                
+                # Extract products from current page
+                self.extract_products_from_grid()
+                
+                # Check if we found new products
+                if len(self.products) == current_count:
+                    no_new_products_count += 1
+                    if no_new_products_count >= 3:  # Stop if no new products for 3 consecutive scrolls
+                        logger.info("No new products found after 3 scrolls, stopping")
+                        break
+                else:
+                    no_new_products_count = 0
+                
+                logger.info(f"Found {len(self.products)} products so far (target: {self.target_count})")
+                
+                # If we have enough products, stop
+                if len(self.products) >= self.target_count:
+                    logger.info(f"Reached target of {self.target_count} products!")
+                    break
+                
+                # Scroll down
+                self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+                
+                # Wait for new content to load
+                time.sleep(2)
+                
+                # Check if page height changed (indicating new content loaded)
+                new_height = self.driver.execute_script("return document.body.scrollHeight")
+                if new_height == last_height:
+                    # Try clicking "Load More" button if available
+                    try:
+                        load_more_button = self.driver.find_element(By.CSS_SELECTOR, "button[aria-label*='Load'], button[class*='load-more'], button[class*='show-more']")
+                        if load_more_button.is_displayed():
+                            self.driver.execute_script("arguments[0].click();", load_more_button)
+                            logger.info("Clicked 'Load More' button")
+                            time.sleep(3)
+                    except NoSuchElementException:
+                        pass
+                
+                last_height = new_height
+                scroll_count += 1
+                
+                # Small delay to prevent overwhelming the server
+                time.sleep(0.5)
+                
+            except Exception as e:
+                logger.error(f"Error during scrolling: {e}")
+                break
+        
+        logger.info(f"Finished scrolling. Found {len(self.products)} products after {scroll_count} scrolls")
+
+    def extract_products_from_grid(self):
+        """Extract product data from the productGrid on the current page."""
+        try:
+            # Wait for product grid to be present
+            WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "ul.productGrid"))
+            )
             
-            # Create a set of existing URLs to avoid duplicates
-            existing_urls = {item.get('url', '') for item in existing_data}
+            # Find the product grid
+            product_grid = self.driver.find_element(By.CSS_SELECTOR, "ul.productGrid")
             
-            # Filter out duplicates
-            new_products = [product for product in products if product.get('url', '') not in existing_urls]
+            # Find all product list items, excluding ads
+            product_items = product_grid.find_elements(By.CSS_SELECTOR, "li.product:not(.plp-ad)")
             
-            # Combine existing and new data
-            all_products = existing_data + new_products
+            logger.info(f"Found {len(product_items)} product items in current view")
             
-            # Save all data
+            for item in product_items:
+                try:
+                    # Find the card title div
+                    card_title_div = item.find_element(By.CSS_SELECTOR, "div.card-title")
+                    
+                    # Find the anchor element with aria-label
+                    anchor_elem = card_title_div.find_element(By.CSS_SELECTOR, "a[aria-label]")
+                    
+                    # Extract data attributes
+                    data_name = anchor_elem.get_attribute("data-name")
+                    data_sku = anchor_elem.get_attribute("data-sku")
+                    data_price = anchor_elem.get_attribute("data-price")
+                    link = anchor_elem.get_attribute("href")
+                    aria_label = anchor_elem.get_attribute("aria-label")
+                    
+                    # Skip if we already have this product (by SKU)
+                    if data_sku and data_sku in self.scraped_products:
+                        continue
+                    
+                    # Create product dictionary
+                    product = {
+                        "name": data_name or aria_label or "Unknown",
+                        "sku": data_sku or "Unknown",
+                        "price": data_price or "Unknown",
+                        "url": link or "Unknown",
+                        "aria_label": aria_label or "Unknown"
+                    }
+                    
+                    # Add to products list if we have valid data
+                    if data_name or aria_label:
+                        self.products.append(product)
+                        if data_sku:
+                            self.scraped_products.add(data_sku)
+                        
+                        logger.debug(f"Added product: {product['name']} - SKU: {product['sku']}")
+                
+                except NoSuchElementException as e:
+                    logger.debug(f"Could not extract product data from item: {e}")
+                    continue
+                except Exception as e:
+                    logger.error(f"Error extracting product data: {e}")
+                    continue
+        
+        except TimeoutException:
+            logger.error("Timeout waiting for product grid to load")
+        except NoSuchElementException:
+            logger.error("Product grid not found on page")
+        except Exception as e:
+            logger.error(f"Error extracting products from grid: {e}")
+
+    def scrape_products(self, url: str = None) -> List[Dict]:
+        """Main method to scrape products from King Arthur Baking website."""
+        if not url:
+            url = settings.mixes_url
+        
+        logger.info(f"Starting to scrape products from: {url}")
+        logger.info(f"Target: {self.target_count} products")
+        
+        try:
+            # Setup driver
+            self.setup_driver()
+            
+            # Navigate to the page
+            logger.info("Loading page...")
+            self.driver.get(url)
+            
+            # Wait for page to load
+            WebDriverWait(self.driver, 20).until(
+                EC.presence_of_element_located((By.TAG_NAME, "body"))
+            )
+            
+            # Scroll and load products
+            self.scroll_and_load_products()
+            
+            # Limit to target count
+            if len(self.products) > self.target_count:
+                self.products = self.products[:self.target_count]
+                logger.info(f"Limited results to {self.target_count} products")
+            
+            logger.info(f"Successfully scraped {len(self.products)} products")
+            return self.products
+            
+        except Exception as e:
+            logger.error(f"Error during scraping: {e}")
+            return []
+        finally:
+            if self.driver:
+                self.driver.quit()
+                logger.info("WebDriver closed")
+
+    def save_to_json(self, products: List[Dict], filename: str = "./data/products_data.json"):
+        """Save products to JSON file, avoiding duplicates."""
+        if not products:
+            logger.warning("No products to save")
+            return
+        
+        # Remove duplicates by SKU (user preference from memory)
+        seen_skus = set()
+        unique_products = []
+        
+        for product in products:
+            sku = product.get('sku', 'Unknown')
+            if sku not in seen_skus:
+                seen_skus.add(sku)
+                unique_products.append(product)
+        
+        logger.info(f"Saving {len(unique_products)} unique products to {filename}")
+        
+        try:
             with open(filename, 'w', encoding='utf-8') as f:
-                json.dump(all_products, f, indent=2, ensure_ascii=False)
-            
-            logger.info(f"Saved {len(all_products)} products to {filename} ({len(new_products)} new products)")
-            return len(new_products)
-            
+                json.dump(unique_products, f, indent=2, ensure_ascii=False)
+            logger.info(f"Successfully saved products to {filename}")
         except Exception as e:
             logger.error(f"Error saving to JSON: {e}")
-            return 0
 
 def main():
     """Main function to run the scraper."""
     scraper = KingArthurScraper()
     
-    # Scrape all mixes
-    products = scraper.scrape_all_mixes()
-    
-    # Save to JSON
-    new_count = scraper.save_to_json(products)
-    
-    print(f"\nScraping completed!")
-    print(f"Total products scraped: {len(products)}")
-    print(f"New products added: {new_count}")
-    print(f"Data saved to: mixes_data.json")
+    try:
+        # Scrape products
+        products = scraper.scrape_products()
+        
+        if products:
+            # Save to JSON
+            scraper.save_to_json(products)
+            logger.info(f"Scraping completed! Found {len(products)} products")
+        else:
+            logger.warning("No products found")
+            
+    except Exception as e:
+        logger.error(f"Scraping failed: {e}")
 
 if __name__ == "__main__":
-    main() 
     main() 
