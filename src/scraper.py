@@ -663,12 +663,26 @@ class KingArthurScraper:
                     if link_match:
                         allergen_link = link_match.group(1)
             
+            # Parse details HTML to extract list items
+            details_parsed_list = []
+            
+            for details_html in details_list:
+                if details_html:
+                    # Extract list items from <ul><li>...</li></ul>
+                    li_matches = re.findall(r'<li>(.*?)</li>', details_html, re.DOTALL)
+                    for li_content in li_matches:
+                        # Clean up HTML tags and normalize whitespace
+                        clean_content = re.sub(r'<[^>]+>', '', li_content)  # Remove HTML tags
+                        clean_content = re.sub(r'\s+', ' ', clean_content.strip())  # Normalize whitespace
+                        if clean_content:
+                            details_parsed_list.append(clean_content)
+            
             # Extract specific important fields
             # Use parsed information if available, otherwise fall back to custom fields
             processed_data['ingredients'] = ingredients_text if ingredients_text else (custom_fields.get('ingredients') or "")
             processed_data['Contains'] = contains_list if contains_list else []
             processed_data['allergen_link'] = allergen_link if allergen_link else ""
-            processed_data['details'] = details_list if details_list else []
+            processed_data['details'] = details_parsed_list if details_parsed_list else []
             processed_data['instructions'] = custom_fields.get('instructions') or custom_fields.get('preparation_instructions')
             
             # Process variants with complete information
