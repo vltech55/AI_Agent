@@ -125,7 +125,7 @@ class MongoDBManager:
         logger.info(f"Inserted {inserted_count} products out of {len(products)}")
         return inserted_count
 
-    def load_from_json(self, filename: str = "mixes_data.json") -> int:
+    def load_from_json(self, filename: str = "data/products_data.json") -> int:
         """Load products from JSON file and insert into database."""
         try:
             with open(filename, 'r', encoding='utf-8') as f:
