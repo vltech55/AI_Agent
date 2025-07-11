@@ -2,6 +2,7 @@ import json
 import time
 import logging
 from typing import List, Dict, Optional, Set
+import requests
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -24,6 +25,81 @@ class KingArthurScraper:
         self.products: List[Dict] = []
         self.scraped_products: Set[str] = set()  # Track by SKU to avoid duplicates
         self.target_count = 123
+        self.base_url = "https://shop.kingarthurbaking.com/graphql"
+        self.session = requests.Session()
+        
+        # Set up cookies based on the PowerShell script
+        self.setup_session()
+        
+    def setup_session(self):
+        """Set up the session with cookies and headers from the PowerShell script."""
+        
+        # Headers from PowerShell script
+        headers = {
+            "accept": "*/*",
+            "accept-encoding": "gzip, deflate, br, zstd",
+            "accept-language": "en-US,en;q=0.9",
+            "authorization": "Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJFUzI1NiJ9.eyJjaWQiOlsxXSwiY29ycyI6WyJodHRwczovL3Nob3Aua2luZ2FydGh1cmJha2luZy5jb20iXSwiZWF0IjoxNzUyMzIzNTc4LCJpYXQiOjE3NTIxNTA3NzgsImlzcyI6IkJDIiwic2lkIjoxMDAxNDI3MDA3LCJzdWIiOiJCQyIsInN1Yl90eXBlIjowLCJ0b2tlbl90eXBlIjoxfQ.9a_WOoqp0ALqOF6ApyAUjRgljDjEb2ImukDMEyKbQCnuNaec3eCtCXMpD12Wh9SwlI4NdqbrDe5QoBVdIHH54Q",
+            "cache-control": "no-cache",
+            "origin": "https://shop.kingarthurbaking.com",
+            "pragma": "no-cache",
+            "priority": "u=1, i",
+            "referer": "https://shop.kingarthurbaking.com/items/",
+            "sec-ch-ua": '"Not)A;Brand";v="8", "Chromium";v="138", "Google Chrome";v="138"',
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": '"Windows"',
+            "sec-fetch-dest": "empty",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-site": "same-origin",
+            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36"
+        }
+        
+        self.session.headers.update(headers)
+        
+        # Cookies from PowerShell script
+        cookies = {
+            "SF-CSRF-TOKEN": "05ee0796-ccbb-4af2-b4aa-bcba367dac59",
+            "fornax_anonymousId": "a88c0403-2b3a-4af9-bb4b-e30ed6a2baa5",
+            "XSRF-TOKEN": "a39fde7dd89311fc21872db738830d37a4f29c44c135de8e271aa8d01d246bc1",
+            "SHOP_SESSION_TOKEN": "2f9a333f-0b67-40e8-b3ab-fe4a7a19c2ea",
+            "osano_consentmanager_uuid": "705932c0-afe6-4a79-ae27-cb5157368b1b",
+            "osano_consentmanager": "YNfsueyfFwbWZLdljM8fInm6el85_WuAg_k2mmaWvzssIYC6vFCPaFix1IfnaMVhAh9hu4GXvQ6S0IP8uEMruenh-wC3YrpjRCnPi9aJtRJ62YIAW_2USF7NepaoWpHp6XZVYzN2sZ3-pp38vCBEc4z_x9_8DuKzlhIG0Q3kn29i_8jc5b5IIRdXprhvl28sC9bv1LrOI2yTuFTq0ymOaY3c_1N1yRhpMl-AoUdnF7YNSCKr-847q0UXR1AeDg0CWK6bcLAAF615FrAlRnieyhumOnA8n4nmPOzMupXEUKJqq_LuX0LP0gy_3OaQPf3nz4ziFBc2D9M=",
+            "_gcl_au": "1.1.677405436.1751959192",
+            "_ga": "GA1.1.217335321.1751959199",
+            "swym-pid": "46qHqNtwHKhsxo5Ppnm7fblMTBxCHkYVu4je8Cc/CrE=",
+            "swym-swymRegid": "6Ue0rVhFD4USXOd219RfcGt29qMVM5HWsgKCbCBIGL-Q-m_V4IYEt0-njQ37vUV_MJzjJUNeDPC62baw2YvELdCw54TosZVyAvy8BW-lNBwQc3skz24PxgF-tKSTxUuJbhM8BROANY8IewI3fWXRV4lCy6LP24zN0J1mIhDg1V0",
+            "swym-email": "null",
+            "lantern": "feed6023-c417-46fe-90b6-314bb83822ca",
+            "ltkSubscriber-Footer": "eyJsdGtDaGFubmVsIjoiZW1haWwiLCJsdGtUcmlnZ2VyIjoibG9hZCIsImx0a19Tb3VyY2UiOiJ0cnVlIiwicHJlZl9NYXJrZXRpbmciOiJ0cnVlIiwicHJlZl9Db250ZW50IjoidHJ1ZSIsImx0a0VtYWlsIjoiIn0%3D",
+            "GSIDTaf3anpQW1cf": "d04fcff1-1334-49f2-b704-b00f90bf3e5b",
+            "STSIDTaf3anpQW1cf": "bd9739b3-0406-485b-a504-16fb2330bf69",
+            "_pin_unauth": "dWlkPU16TmtPRGhtWVRjdE5HRTFNeTAwTURGaExXSXpZamt0TjJNNFpEazVNelZtT1RReA",
+            "rand100sticky": "39",
+            "_tt_enable_cookie": "1",
+            "_ttp": "01JZMEGHYH800TX98WWM0H0RC5_.tt.1",
+            "dy_fs_page": "shop.kingarthurbaking.com%2Fitems%2Fdiner-style-pancake-waffle-mix",
+            "_dy_soct": "1752001812!!",
+            "STORE_VISITOR": "1",
+            "ttcsid": "1752157604547::yG-Wh_PGvsDf4jNqBaES.3.1752157604556",
+            "ttcsid_CKRRVC3C77U81CKC8UMG": "1752157604545::ISO1tz6W0NNBcDTJ_FCT.3.1752158891617",
+            "yotpo_pixel": "5cd009ff-8b7e-4442-831a-4a8cd9aabbd0",
+            "lastVisitedCategory": "47",
+            "_rdt_uuid": "1751959215989.3d9c67ac-9c0d-4883-8f47-e84f619edf77",
+            "ltkpopup-session-depth": "32-1",
+            "xdibx": "N4Ig-mBGAeDGCuAnRIBcoAOGAuBnNAjAOwCsATAQJwAsAbGQAwM0A0IGAbrAHbZpEE2ufKmLkqdRs2ptOuHn1FtESADZoQAC2zYMuVAHoDuTQHsMAOgDWAS24BzAIaJsmpJEe2HF2KYC2BiBsqmoaBo6qqgCmiPZR3AC0GIim9oiOfgD8YPaqALwEAFQ2HBwAVgAcACaFObCqYI7whQByZbAAzC0AIgCCBD0AsmQAMmUAol0AKuMkLVNW0ADyUwCSFrVOhYMTHYMAXoMEB6vQY5Pzs.OLK1YbOY5gBABaAFIA6gDCAIoA4gDKFEKsH2FzW0HmAFUyPNvlZIKD9q9frBoK8ABLfCH7SEAT0GUwAmgB3Fqg6jI0y4pb.ABKuEGn1ppkGvQsFiCIFUeEIpAotGYRAYFVotAAvmwIDBklEOGhQFVHLiRABtMRUEiUCgVSgkQRiRi0CoEBgkPksA0EDoEMi0DrkSgAXQl4Cg0Fl8R56BAto6toI8pAcu9sEIbEUatIGsoHQqAntzqEgdDqAY4bQKsTIBQIbQaZAEazVWTefTqEzLpToBT-cLYpdvttZEDwerYYLGfVusoFQq1H7HSzIjbqbLFeUJdHHfLRcntYzWarIBTgmnkb13ZoDA6RCd9bYvtjRBbk9XEa7mrIHWoRAqZCHc7HWZzI.nM5dxdzU7rbCXK7HF5ah0lC0Fqzr7q6MCwDYn4gFEHQAGY7jQjgJI4FQdFECTUHq1AJDQUQVAkjD9ghCFkGQCEMI4RAJIBFDxhUIBikAA_",
+            "swym-session-id": "01i8wclcjvhay797wzae1mattb0b8v5legc4mck3aww2lgzrq0kj1a6ayt0so6ju",
+            "_sp_ses.de6a": "*",
+            "athena_short_visit_id": "a1a55565-7770-482d-8abd-6e00f667e385:1752227054",
+            "__cf_bm": "HRE4iVtGCSs5wqP98Ob6t04Gi36OrKNcfrN_XFQsSJU-1752227054-1.0.1.1-FxKjgmq5si1Vt9E6lTHKokns0GcS6515BlSrsWr59q.ILXvqBbn0elU2KOHjONHGN3F3dwE6KtGVlnPmIBqHheyqV_RoEL2Lr__UnbYnOvU",
+            "_sp_id.de6a": "00d8314a67ff6b09.1751959367.20.1752227288.1752220948",
+            "_ga_1ZJWCQGS21": "GS2.1.s1752227323$o18$g0$t1752227323$j60$l0$h0",
+            "Shopper-Pref": "B714112B953476A5E5C4973DF71F530FD6E48587-1752832120822-x%7B%22cur%22%3A%22USD%22%2C%22funcConsent%22%3Atrue%7D"
+        }
+        
+        # Set cookies in session
+        for name, value in cookies.items():
+            self.session.cookies.set(name, value)
+
 
     def setup_driver(self):
         """Set up Chrome WebDriver with optimized settings for speed."""
@@ -159,12 +235,14 @@ class KingArthurScraper:
             for item in product_items:
                 try:
                     # Find the card title div
+                    article_card = item.find_element(By.CSS_SELECTOR, "article.card")
                     card_title_div = item.find_element(By.CSS_SELECTOR, "div.card-title")
                     
                     # Find the anchor element with aria-label
                     anchor_elem = card_title_div.find_element(By.CSS_SELECTOR, "a[aria-label]")
                     
                     # Extract data attributes
+                    entity_id = article_card.get_attribute("data-entity-id")
                     data_name = anchor_elem.get_attribute("data-name")
                     data_sku = anchor_elem.get_attribute("data-sku")
                     data_price = anchor_elem.get_attribute("data-price")
@@ -177,12 +255,15 @@ class KingArthurScraper:
                     
                     # Create product dictionary
                     product = {
-                        "name": data_name or aria_label or "Unknown",
-                        "sku": data_sku or "Unknown",
-                        "price": data_price or "Unknown",
-                        "url": link or "Unknown",
-                        "aria_label": aria_label or "Unknown"
+                        "name": data_name or aria_label or "",
+                        "sku": data_sku or "",
+                        "price": data_price or "",
+                        "url": link or "",
+                        "aria_label": aria_label or "",
+                        "entity_id": entity_id or ""
                     }
+
+                    product = self.enhance_product(product)
                     
                     # Add to products list if we have valid data
                     if data_name or aria_label:
@@ -257,7 +338,7 @@ class KingArthurScraper:
         unique_products = []
         
         for product in products:
-            sku = product.get('sku', 'Unknown')
+            sku = product.get('sku', '')
             if sku not in seen_skus:
                 seen_skus.add(sku)
                 unique_products.append(product)
@@ -270,6 +351,240 @@ class KingArthurScraper:
             logger.info(f"Successfully saved products to {filename}")
         except Exception as e:
             logger.error(f"Error saving to JSON: {e}")
+
+    def enhance_product(self, product: Dict) -> Optional[Dict]:
+        """Enhance a single product with GraphQL data."""
+        try:
+            # Get entity ID from the product
+            entity_id = None
+            
+            # Check if entity_id is already in the product
+            if 'entity_id' in product:
+                entity_id = product['entity_id']
+            elif 'entityId' in product:
+                entity_id = product['entityId']
+            elif 'url' in product:
+                return None
+            
+            if not entity_id:
+                logger.warning(f"Could not determine entity ID for product: {product.get('name', 'Unknown')}")
+                return None
+            
+            # Make GraphQL request
+            graphql_data = self.make_graphql_request(entity_id)
+            if not graphql_data:
+                return None
+            
+            # Process the response
+            enhanced_data = self.process_graphql_data(graphql_data)
+            
+            # Merge with original product data (enhanced data takes precedence)
+            enhanced_product = {**product, **enhanced_data}
+            enhanced_product['enhanced_at'] = time.time()
+            enhanced_product['enhanced'] = True
+            
+            logger.info(f"Enhanced product: {enhanced_product.get('name', 'Unknown')}")
+            return enhanced_product
+            
+        except Exception as e:
+            logger.error(f"Error enhancing product {product.get('name', 'Unknown')}: {e}")
+            return None
+
+    def build_graphql_query(self, entity_id: int) -> str:
+        """Build GraphQL query for a specific product entity ID - matches PowerShell script format."""
+        return f"""query {{
+                    site {{
+                            product(entityId: {entity_id})
+                            {{
+                            entityId
+                            name
+                            description
+                            plainTextDescription(characterLimit:1000)
+                            path
+                            customFields(names: ["_review_avg_score", "_review_count"]) {{
+                              edges {{
+                                node {{
+                                  name
+                                  value
+                                }}
+                              }}
+                            }}
+                            variants {{
+                                edges {{
+                                node {{
+                                    sku
+                                    defaultImage {{
+                                urlOriginal
+                            }}
+                                    prices {{
+                                    price {{
+                                        value
+                                    }}
+                                    }}
+                                    inventory {{
+                                    isInStock
+                                    }}
+                                }}
+                                }}
+                            }}
+                            }}
+                    }}
+                }}
+                """
+
+    def make_graphql_request(self, entity_id: int) -> Optional[Dict]:
+        """Make GraphQL request for a specific product using the same approach as PowerShell."""
+        try:
+            query = self.build_graphql_query(entity_id)
+            
+            payload = {
+                "query": query
+            }
+            
+            response = self.session.post(
+                self.base_url,
+                json=payload,
+                timeout=30
+            )
+            
+            response.raise_for_status()
+            data = response.json()
+            
+            if 'errors' in data:
+                logger.error(f"GraphQL errors for entity {entity_id}: {data['errors']}")
+                return None
+            
+            product_data = data.get('data', {}).get('site', {}).get('product')
+            if not product_data:
+                logger.warning(f"No product data found for entity {entity_id}")
+                return None
+            
+            logger.info(f"Successfully retrieved GraphQL data for entity {entity_id}")
+            return product_data
+            
+        except requests.exceptions.RequestException as e:
+            logger.error(f"HTTP error for entity {entity_id}: {e}")
+            return None
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON decode error for entity {entity_id}: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Unexpected error for entity {entity_id}: {e}")
+            return None
+
+    def process_graphql_data(self, graphql_data: Dict) -> Dict:
+        """Process GraphQL response and extract useful information."""
+        try:
+            processed_data = {
+                'entity_id': graphql_data.get('entityId'),
+                'name': graphql_data.get('name'),
+                'description': graphql_data.get('description'),
+                'plain_text_description': graphql_data.get('plainTextDescription'),
+                'path': graphql_data.get('path'),
+                'brand': graphql_data.get('brand', {}).get('name') if graphql_data.get('brand') else None,
+            }
+            
+            # Process SEO data
+            seo = graphql_data.get('seo', {})
+            if seo:
+                processed_data['seo'] = {
+                    'page_title': seo.get('pageTitle'),
+                    'meta_description': seo.get('metaDescription'),
+                    'meta_keywords': seo.get('metaKeywords')
+                }
+            
+            # Process categories
+            categories = []
+            category_edges = graphql_data.get('categories', {}).get('edges', [])
+            for edge in category_edges:
+                node = edge.get('node', {})
+                categories.append({
+                    'name': node.get('name'),
+                    'path': node.get('path')
+                })
+            processed_data['categories'] = categories
+            
+            # Process custom fields
+            custom_fields = {}
+            custom_field_edges = graphql_data.get('customFields', {}).get('edges', [])
+            for edge in custom_field_edges:
+                node = edge.get('node', {})
+                field_name = node.get('name')
+                field_value = node.get('value')
+                if field_name:
+                    custom_fields[field_name] = field_value
+            processed_data['custom_fields'] = custom_fields
+            
+            # Extract specific fields for backward compatibility
+            processed_data['review_avg_score'] = custom_fields.get('_review_avg_score')
+            processed_data['review_count'] = custom_fields.get('_review_count')
+            processed_data['ingredients'] = custom_fields.get('ingredients')
+            processed_data['instructions'] = custom_fields.get('instructions')
+            processed_data['nutrition_facts'] = custom_fields.get('nutrition_facts')
+            processed_data['allergens'] = custom_fields.get('allergens')
+            processed_data['product_type'] = custom_fields.get('product_type')
+            
+            # Process variants
+            variants = []
+            variant_edges = graphql_data.get('variants', {}).get('edges', [])
+            for edge in variant_edges:
+                node = edge.get('node', {})
+                variant = {
+                    'entity_id': node.get('entityId'),
+                    'sku': node.get('sku'),
+                    'inventory': node.get('inventory', {}),
+                    'weight': node.get('weight'),
+                    'dimensions': node.get('dimensions')
+                }
+                
+                # Process prices
+                prices = node.get('prices', {})
+                if prices:
+                    variant['prices'] = {
+                        'price': prices.get('price', {}).get('value'),
+                        'currency': prices.get('price', {}).get('currencyCode'),
+                        'sale_price': prices.get('salePrice', {}).get('value') if prices.get('salePrice') else None,
+                        'base_price': prices.get('basePrice', {}).get('value') if prices.get('basePrice') else None
+                    }
+                
+                # Process default image
+                default_image = node.get('defaultImage')
+                if default_image:
+                    variant['default_image'] = {
+                        'url': default_image.get('urlOriginal'),
+                        'alt_text': default_image.get('altText')
+                    }
+                
+                variants.append(variant)
+            
+            processed_data['variants'] = variants
+            
+            # Process images
+            images = []
+            image_edges = graphql_data.get('images', {}).get('edges', [])
+            for edge in image_edges:
+                node = edge.get('node', {})
+                images.append({
+                    'url': node.get('urlOriginal'),
+                    'alt_text': node.get('altText'),
+                    'is_original': node.get('isOriginal')
+                })
+            processed_data['images'] = images
+            
+            # Process review summary
+            review_summary = graphql_data.get('reviewSummary')
+            if review_summary:
+                processed_data['review_summary'] = {
+                    'summation_of_ratings': review_summary.get('summationOfRatings'),
+                    'number_of_reviews': review_summary.get('numberOfReviews'),
+                    'average_rating': review_summary.get('averageRating')
+                }
+            
+            return processed_data
+            
+        except Exception as e:
+            logger.error(f"Error processing GraphQL response: {e}")
+            return {}
 
 def main():
     """Main function to run the scraper."""
