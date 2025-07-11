@@ -3,6 +3,7 @@ import time
 import logging
 from typing import List, Dict, Optional, Set
 import requests
+from urllib.parse import urlparse, parse_qs
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -24,7 +25,7 @@ class KingArthurScraper:
         self.driver = None
         self.products: List[Dict] = []
         self.scraped_products: Set[str] = set()  # Track by SKU to avoid duplicates
-        self.target_count = 123
+        self.target_count = 10
         self.base_url = "https://shop.kingarthurbaking.com/graphql"
         self.session = requests.Session()
         
@@ -99,6 +100,50 @@ class KingArthurScraper:
         # Set cookies in session
         for name, value in cookies.items():
             self.session.cookies.set(name, value)
+
+    def extract_entity_id_from_url(self, url: str) -> Optional[int]:
+        """Extract entity ID from product URL using multiple methods."""
+        try:
+            # Pattern 1: Direct entity ID in URL path (ending with number)
+            entity_match = re.search(r'/items/.*?-(\d+)$', url)
+            if entity_match:
+                return int(entity_match.group(1))
+            
+            # Pattern 2: Entity ID in query parameters
+            parsed_url = urlparse(url)
+            query_params = parse_qs(parsed_url.query)
+            if 'entityId' in query_params:
+                return int(query_params['entityId'][0])
+            
+            # Pattern 3: Extract from page source if available
+            try:
+                response = self.session.get(url, timeout=10)
+                if response.status_code == 200:
+                    # Look for entity ID in page content
+                    patterns = [
+                        r'"entityId":\s*(\d+)',
+                        r'data-product-id="(\d+)"',
+                        r'product-id-(\d+)',
+                        r'"id"\s*:\s*(\d+)',
+                        r'productId["\']?\s*:\s*["\']?(\d+)',
+                    ]
+                    
+                    for pattern in patterns:
+                        match = re.search(pattern, response.text)
+                        if match:
+                            entity_id = int(match.group(1))
+                            logger.debug(f"Found entity ID {entity_id} in page source for {url}")
+                            return entity_id
+                            
+            except Exception as page_error:
+                logger.debug(f"Could not extract entity ID from page source: {page_error}")
+            
+            logger.debug(f"Could not extract entity ID from URL: {url}")
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error extracting entity ID from URL {url}: {e}")
+            return None
 
 
     def setup_driver(self):
@@ -263,15 +308,27 @@ class KingArthurScraper:
                         "entity_id": entity_id or ""
                     }
 
-                    product = self.enhance_product(product)
-                    
                     # Add to products list if we have valid data
                     if data_name or aria_label:
-                        self.products.append(product)
+                        # Try to enhance with GraphQL data immediately
+                        enhanced_product = self.enhance_product(product)
+                        
+                        # Use enhanced data if available, otherwise use basic data
+                        final_product = enhanced_product if enhanced_product else product
+                        
+                        self.products.append(final_product)
                         if data_sku:
                             self.scraped_products.add(data_sku)
                         
-                        logger.debug(f"Added product: {product['name']} - SKU: {product['sku']}")
+                        # Log the result
+                        if enhanced_product:
+                            logger.debug(f"Enhanced and added: {final_product['name']} - SKU: {final_product['sku']}")
+                        else:
+                            logger.debug(f"Added basic product: {product['name']} - SKU: {product['sku']}")
+                        
+                        # Small delay between GraphQL requests to be respectful
+                        if enhanced_product:
+                            time.sleep(0.5)
                 
                 except NoSuchElementException as e:
                     logger.debug(f"Could not extract product data from item: {e}")
@@ -353,7 +410,7 @@ class KingArthurScraper:
             logger.error(f"Error saving to JSON: {e}")
 
     def enhance_product(self, product: Dict) -> Optional[Dict]:
-        """Enhance a single product with GraphQL data."""
+        """Enhance a single product with comprehensive GraphQL data."""
         try:
             # Get entity ID from the product
             entity_id = None
@@ -364,10 +421,10 @@ class KingArthurScraper:
             elif 'entityId' in product:
                 entity_id = product['entityId']
             elif 'url' in product:
-                return None
+                entity_id = self.extract_entity_id_from_url(product['url'])
             
             if not entity_id:
-                logger.warning(f"Could not determine entity ID for product: {product.get('name', 'Unknown')}")
+                logger.debug(f"Could not determine entity ID for product: {product.get('name', 'Unknown')}")
                 return None
             
             # Make GraphQL request
@@ -375,15 +432,20 @@ class KingArthurScraper:
             if not graphql_data:
                 return None
             
-            # Process the response
+            # Process the comprehensive response
             enhanced_data = self.process_graphql_data(graphql_data)
             
-            # Merge with original product data (enhanced data takes precedence)
+            # Merge with original product data (enhanced data takes precedence for conflicting keys)
             enhanced_product = {**product, **enhanced_data}
             enhanced_product['enhanced_at'] = time.time()
             enhanced_product['enhanced'] = True
+            enhanced_product['enhancement_version'] = 'integrated_v1'
             
-            logger.info(f"Enhanced product: {enhanced_product.get('name', 'Unknown')}")
+            # Count custom fields for logging
+            custom_fields = enhanced_data.get('custom_fields', {})
+            field_count = len([k for k, v in custom_fields.items() if v])
+            
+            logger.info(f"✅ Enhanced with comprehensive data: {enhanced_product.get('name', 'Unknown')} ({field_count} custom fields)")
             return enhanced_product
             
         except Exception as e:
@@ -391,46 +453,85 @@ class KingArthurScraper:
             return None
 
     def build_graphql_query(self, entity_id: int) -> str:
-        """Build GraphQL query for a specific product entity ID - matches PowerShell script format."""
+        """Build comprehensive GraphQL query to capture all product fields."""
         return f"""query {{
                     site {{
-                            product(entityId: {entity_id})
-                            {{
+                        product(entityId: {entity_id}) {{
                             entityId
                             name
                             description
                             plainTextDescription(characterLimit:1000)
                             path
-                            customFields(names: ["_review_avg_score", "_review_count"]) {{
-                              edges {{
-                                node {{
-                                  name
-                                  value
+                            sku
+                            brand {{
+                                name
+                            }}
+                            categories {{
+                                edges {{
+                                    node {{
+                                        name
+                                        path
+                                    }}
                                 }}
-                              }}
+                            }}
+                            customFields {{
+                                edges {{
+                                    node {{
+                                        name
+                                        value
+                                    }}
+                                }}
+                            }}
+                            metafields(namespace: "information") {{
+                                edges {{
+                                      node {{
+                                        key
+                                        value
+                                      }}
+
+                                }}
                             }}
                             variants {{
                                 edges {{
-                                node {{
-                                    sku
-                                    defaultImage {{
-                                urlOriginal
-                            }}
-                                    prices {{
-                                    price {{
-                                        value
-                                    }}
-                                    }}
-                                    inventory {{
-                                    isInStock
+                                    node {{
+                                        entityId
+                                        sku
+                                        defaultImage {{
+                                            urlOriginal
+                                            altText
+                                        }}
+                                        prices {{
+                                            price {{
+                                                value
+                                                currencyCode
+                                            }}
+                                            salePrice {{
+                                                value
+                                                currencyCode
+                                            }}
+                                        }}
+                                        inventory {{
+                                            isInStock
+                                        }}
+                                        weight {{
+                                            value
+                                            unit
+                                        }}
                                     }}
                                 }}
+                            }}
+                
+                            images {{
+                                edges {{
+                                    node {{
+                                        urlOriginal
+                                        altText
+                                    }}
                                 }}
                             }}
-                            }}
+                        }}
                     }}
-                }}
-                """
+                }}"""
 
     def make_graphql_request(self, entity_id: int) -> Optional[Dict]:
         """Make GraphQL request for a specific product using the same approach as PowerShell."""
@@ -473,25 +574,22 @@ class KingArthurScraper:
             return None
 
     def process_graphql_data(self, graphql_data: Dict) -> Dict:
-        """Process GraphQL response and extract useful information."""
+        """Process comprehensive GraphQL response and extract all available information."""
         try:
             processed_data = {
                 'entity_id': graphql_data.get('entityId'),
                 'name': graphql_data.get('name'),
-                'description': graphql_data.get('description'),
                 'plain_text_description': graphql_data.get('plainTextDescription'),
                 'path': graphql_data.get('path'),
-                'brand': graphql_data.get('brand', {}).get('name') if graphql_data.get('brand') else None,
+                'sku': graphql_data.get('sku'),
             }
             
-            # Process SEO data
-            seo = graphql_data.get('seo', {})
-            if seo:
-                processed_data['seo'] = {
-                    'page_title': seo.get('pageTitle'),
-                    'meta_description': seo.get('metaDescription'),
-                    'meta_keywords': seo.get('metaKeywords')
-                }
+            # Process brand information
+            brand = graphql_data.get('brand')
+            if brand:
+                processed_data['brand'] = brand.get('name')
+            else:
+                processed_data['brand'] = None
             
             # Process categories
             categories = []
@@ -504,7 +602,7 @@ class KingArthurScraper:
                 })
             processed_data['categories'] = categories
             
-            # Process custom fields
+            # Process ALL custom fields
             custom_fields = {}
             custom_field_edges = graphql_data.get('customFields', {}).get('edges', [])
             for edge in custom_field_edges:
@@ -515,16 +613,65 @@ class KingArthurScraper:
                     custom_fields[field_name] = field_value
             processed_data['custom_fields'] = custom_fields
             
-            # Extract specific fields for backward compatibility
-            processed_data['review_avg_score'] = custom_fields.get('_review_avg_score')
-            processed_data['review_count'] = custom_fields.get('_review_count')
-            processed_data['ingredients'] = custom_fields.get('ingredients')
-            processed_data['instructions'] = custom_fields.get('instructions')
-            processed_data['nutrition_facts'] = custom_fields.get('nutrition_facts')
-            processed_data['allergens'] = custom_fields.get('allergens')
-            processed_data['product_type'] = custom_fields.get('product_type')
+            # Process metafields for pdp_details and pdp_ingredients
+            metafields_list = []
+            metafield_edges = graphql_data.get('metafields', {}).get('edges', [])
+            for edge in metafield_edges:
+                node = edge.get('node', {})
+                key = node.get('key')
+                value = node.get('value')
+                if key and value:
+                    metafields_list.append({
+                        'key': key,
+                        'value': value
+                    })
             
-            # Process variants
+            # Extract ingredients and details as lists
+            ingredients_list = []
+            details_list = []
+            
+            for metafield in metafields_list:
+                if metafield['key'] == 'pdp_ingredients':
+                    ingredients_list.append(metafield['value'])
+                elif metafield['key'] == 'pdp_details':
+                    details_list.append(metafield['value'])
+            
+            # Parse ingredients HTML to extract specific information
+            ingredients_text = ""
+            contains_list = []
+            allergen_link = ""
+            
+            for ingredients_html in ingredients_list:
+                if ingredients_html:
+                    # Extract ingredients text from <h3>Ingredients</h3><p>...</p>
+                    ingredients_match = re.search(r'<h3>Ingredients</h3>\s*<p>(.*?)</p>', ingredients_html, re.DOTALL)
+                    if ingredients_match:
+                        ingredients_text = ingredients_match.group(1).strip()
+                        # Clean up any newlines and extra spaces
+                        ingredients_text = re.sub(r'\s+', ' ', ingredients_text)
+                    
+                    # Extract allergens from <h3>Contains</h3><p>...</p>
+                    contains_match = re.search(r'<h3>Contains</h3>\s*<p>(.*?)</p>', ingredients_html, re.DOTALL)
+                    if contains_match:
+                        contains_text = contains_match.group(1).strip()
+                        # Split by common separators and clean up
+                        contains_items = [item.strip() for item in re.split(r'[,;]', contains_text) if item.strip()]
+                        contains_list.extend(contains_items)
+                    
+                    # Extract allergen program link
+                    link_match = re.search(r'href="([^"]*allergen-program[^"]*)"', ingredients_html)
+                    if link_match:
+                        allergen_link = link_match.group(1)
+            
+            # Extract specific important fields
+            # Use parsed information if available, otherwise fall back to custom fields
+            processed_data['ingredients'] = ingredients_text if ingredients_text else (custom_fields.get('ingredients') or "")
+            processed_data['Contains'] = contains_list if contains_list else []
+            processed_data['allergen_link'] = allergen_link if allergen_link else ""
+            processed_data['details'] = details_list if details_list else []
+            processed_data['instructions'] = custom_fields.get('instructions') or custom_fields.get('preparation_instructions')
+            
+            # Process variants with complete information
             variants = []
             variant_edges = graphql_data.get('variants', {}).get('edges', [])
             for edge in variant_edges:
@@ -532,20 +679,28 @@ class KingArthurScraper:
                 variant = {
                     'entity_id': node.get('entityId'),
                     'sku': node.get('sku'),
-                    'inventory': node.get('inventory', {}),
                     'weight': node.get('weight'),
-                    'dimensions': node.get('dimensions')
                 }
                 
-                # Process prices
+                # Process comprehensive pricing
                 prices = node.get('prices', {})
                 if prices:
                     variant['prices'] = {
                         'price': prices.get('price', {}).get('value'),
                         'currency': prices.get('price', {}).get('currencyCode'),
                         'sale_price': prices.get('salePrice', {}).get('value') if prices.get('salePrice') else None,
-                        'base_price': prices.get('basePrice', {}).get('value') if prices.get('basePrice') else None
                     }
+                else:
+                    variant['prices'] = {}
+                
+                # Process inventory
+                inventory = node.get('inventory', {})
+                if inventory:
+                    variant['inventory'] = {
+                        'is_in_stock': inventory.get('isInStock'),
+                    }
+                else:
+                    variant['inventory'] = {}
                 
                 # Process default image
                 default_image = node.get('defaultImage')
@@ -554,36 +709,33 @@ class KingArthurScraper:
                         'url': default_image.get('urlOriginal'),
                         'alt_text': default_image.get('altText')
                     }
+                else:
+                    variant['default_image'] = {}
                 
                 variants.append(variant)
             
             processed_data['variants'] = variants
             
-            # Process images
+            # Process all product images
             images = []
             image_edges = graphql_data.get('images', {}).get('edges', [])
             for edge in image_edges:
                 node = edge.get('node', {})
                 images.append({
                     'url': node.get('urlOriginal'),
-                    'alt_text': node.get('altText'),
-                    'is_original': node.get('isOriginal')
+                    'alt_text': node.get('altText')
                 })
             processed_data['images'] = images
             
-            # Process review summary
-            review_summary = graphql_data.get('reviewSummary')
-            if review_summary:
-                processed_data['review_summary'] = {
-                    'summation_of_ratings': review_summary.get('summationOfRatings'),
-                    'number_of_reviews': review_summary.get('numberOfReviews'),
-                    'average_rating': review_summary.get('averageRating')
-                }
+            processed_data['review_summary'] = {
+                'number_of_reviews': custom_fields.get('_review_count'),
+                'average_rating': custom_fields.get('_review_avg_score')
+            }
             
             return processed_data
             
         except Exception as e:
-            logger.error(f"Error processing GraphQL response: {e}")
+            logger.error(f"Error processing comprehensive GraphQL response: {e}")
             return {}
 
 def main():
