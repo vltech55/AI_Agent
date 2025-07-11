@@ -59,7 +59,7 @@ def scrape_data():
     
     try:
         scraper = KingArthurScraper()
-        products = scraper.scrape_all_mixes()
+        products = scraper.scrape_products()
         
         if products:
             new_count = scraper.save_to_json(products)
