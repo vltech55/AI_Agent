@@ -12,11 +12,11 @@ This package contains the core components of the AI assistant:
 from .agent import KingArthurBakingAgent
 from .scraper import KingArthurScraper
 from .database import MongoDBManager
-from .embeddings import EmbeddingService
+# Removed AtlasVectorSearchService - using database search methods directly
 
 __all__ = [
     'KingArthurBakingAgent',
     'KingArthurScraper',
     'MongoDBManager',
-    'EmbeddingService'
+    # 'AtlasVectorSearchService' - removed, using database search methods directly
 ] 

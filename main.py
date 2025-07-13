@@ -17,7 +17,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # Import our modules
 from src.scraper import KingArthurScraper
 from src.database import MongoDBManager
-from src.embeddings import EmbeddingService
+# Removed AtlasVectorSearchService - using database search methods directly
 from src.agent import KingArthurBakingAgent
 from src.config import settings
 
@@ -80,6 +80,7 @@ def setup_database():
     
     try:
         db_manager = MongoDBManager()
+        return True
         
         # Load data from JSON file
         inserted_count = db_manager.load_from_json()
@@ -101,8 +102,8 @@ def generate_embeddings():
     logger.info("Generating embeddings...")
     
     try:
-        embedding_service = EmbeddingService()
-        updated_count = embedding_service.update_embeddings()
+        db_manager = MongoDBManager()
+        updated_count = db_manager.update_embeddings()
         logger.info(f"Updated embeddings for {updated_count} products")
         return True
         
