@@ -84,6 +84,7 @@ def setup_database():
         # Load data from JSON file
         inserted_count = db_manager.load_from_json()
         logger.info(f"Inserted {inserted_count} products into database")
+        db_manager.create_indexes()
         
         # Get database stats
         stats = db_manager.get_stats()

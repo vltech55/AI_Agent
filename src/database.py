@@ -1,6 +1,7 @@
 import json
 import logging
 from typing import List, Dict, Optional, Any
+from pymongo.operations import SearchIndexModel
 from pymongo import MongoClient
 from pymongo.collection import Collection
 from pymongo.database import Database
@@ -21,6 +22,31 @@ class MongoDBManager:
         self.collection: Optional[Collection] = None
         self.connect()
 
+        # query_embedding = self.generate_embedding("Ingredients: Flour, Sugar, Baking Powder, Baking Soda, Salt, Vanilla Extract, Egg, Milk, Butter, Chocolate Chips")
+        # pipeline = [
+        #     {
+        #             "$vectorSearch": {
+        #                 "index": "vector_index",
+        #                 "queryVector": query_embedding,
+        #                 "path": "embedding",
+        #                 "exact": True,
+        #                 "limit": 5
+        #             }
+        #     }, {
+        #             "$project": {
+        #             "_id": 0,
+        #             "name": 1,
+        #             "price": 1,
+        #             "ingredients": 1,
+        #         }
+        #     }
+        # ]
+        # results = self.collection.aggregate(pipeline)
+        # array_of_results = []
+        # for doc in results:
+        #     array_of_results.append(doc)
+        # print(array_of_results)
+
     def connect(self):
         """Connect to MongoDB Atlas."""
         try:
@@ -33,7 +59,7 @@ class MongoDBManager:
             logger.info("Successfully connected to MongoDB Atlas")
             
             # Create indexes
-            self.create_indexes()
+            # self.create_indexes()
             
         except Exception as e:
             logger.error(f"Failed to connect to MongoDB: {e}")
@@ -43,20 +69,44 @@ class MongoDBManager:
         """Create necessary indexes for the collection."""
         try:
             # Create unique index on URL to prevent duplicates
-            self.collection.create_index("url", unique=True)
+            # self.collection.create_index("url", unique=True)
+            search_idx = SearchIndexModel(
+                definition ={
+                    "mappings": {
+                        "dynamic": True
+                    }
+                },
+                name="text_index",
+            )
+            vector_idx = SearchIndexModel(
+                definition={
+                    "fields": [
+                    {
+                        "type": "vector",
+                        "numDimensions": 1536,
+                        "path": "embedding",
+                        "similarity": "cosine"
+                    }
+                    ]
+                },
+                name="vector_index",
+                type="vectorSearch",
+            )
+            indexes = [search_idx, vector_idx]
+            self.collection.create_search_indexes(models=indexes)
+
+            logger.info("Indexes created successfully")
             
             # Create text index for search
-            self.collection.create_index([
-                ("name", "text"),
-                ("description", "text"),
-                ("instructions", "text"),
-                ("ingredients", "text")
-            ])
+            # self.collection.create_index([
+            #     ("name", "text"),
+            #     ("description", "text"),
+            #     ("instructions", "text"),
+            #     ("ingredients", "text")
+            # ])
             
             # Create index for embeddings if vector search is supported
             # Note: This might need to be configured in MongoDB Atlas UI for vector search
-            
-            logger.info("Indexes created successfully")
             
         except Exception as e:
             logger.warning(f"Error creating indexes: {e}")
@@ -73,12 +123,25 @@ class MongoDBManager:
         except Exception as e:
             logger.error(f"Error generating embedding: {e}")
             return []
+    
+    def generate_searchable_text(self, product: Dict) -> str:
+        """Generate searchable text for a product."""
+        name = product.get('name', '')
+        description = product.get('plain_text_description', '')
+        ingredients = product.get('ingredients', '')
+        details = ', '.join(product.get('details', ''))
+        contains = ', '.join(product.get('Contains', ''))
+        custom_fields = product.get('custom_fields', '')
+        allergens = product.get('allergen_link', '')
+
+        searchable_text = f"This is a mix named {name}. {description}. The ingredients are {ingredients}. Here is the details: {details}. This mix contains {contains}. The custom fields are {custom_fields}. If you want to know more about the allergens, please visit {allergens}."
+        return searchable_text
 
     def prepare_document(self, product: Dict) -> Dict:
         """Prepare document for MongoDB insertion with embeddings."""
         try:
             # Create searchable text by combining key fields
-            searchable_text = f"{product.get('name', '')} {product.get('description', '')} {product.get('instructions', '')} {product.get('ingredients', '')}"
+            searchable_text = self.generate_searchable_text(product)
             
             # Generate embedding
             embedding = self.generate_embedding(searchable_text)
@@ -260,8 +323,8 @@ def main():
     db_manager = MongoDBManager()
     
     # Load data from JSON
-    inserted_count = db_manager.load_from_json()
-    print(f"Inserted {inserted_count} products")
+    # inserted_count = db_manager.load_from_json()
+    # print(f"Inserted {inserted_count} products")
     
     # Get stats
     stats = db_manager.get_stats()
