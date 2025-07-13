@@ -157,26 +157,22 @@ def render_database_stats():
     if st.session_state.db_manager:
         try:
             stats = st.session_state.db_manager.get_stats()
+            st.markdown(f"""
+            <div class="stats-box">
+                <h4>📊 Database Stats</h4>
+                <p><strong>Total Products:</strong> {stats.get('total_products', 0)}</p>
+                <p><strong>Products with Embeddings:</strong> {stats.get('products_with_embeddings', 0)}</p>
+            </div>
+            """, unsafe_allow_html=True)
             
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.markdown(f"""
-                <div class="stats-box">
-                    <h4>📊 Database Stats</h4>
-                    <p><strong>Total Products:</strong> {stats.get('total_products', 0)}</p>
-                    <p><strong>Products with Embeddings:</strong> {stats.get('products_with_embeddings', 0)}</p>
-                </div>
-                """, unsafe_allow_html=True)
-            
-            with col2:
-                if st.button("🔄 Update Embeddings"):
-                    with st.spinner("Updating embeddings..."):
-                        try:
-                            updated_count = st.session_state.db_manager.update_embeddings()
-                            st.success(f"✅ Updated embeddings for {updated_count} products")
-                        except Exception as e:
-                            st.error(f"❌ Error updating embeddings: {str(e)}")
+            # with col2:
+            #     if st.button("🔄 Update Embeddings"):
+            #         with st.spinner("Updating embeddings..."):
+            #             try:
+            #                 updated_count = st.session_state.db_manager.update_embeddings()
+            #                 st.success(f"✅ Updated embeddings for {updated_count} products")
+            #             except Exception as e:
+            #                 st.error(f"❌ Error updating embeddings: {str(e)}")
                             
         except Exception as e:
             st.error(f"❌ Error getting database stats: {str(e)}")
