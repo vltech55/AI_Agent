@@ -23,24 +23,24 @@ class MongoDBManager:
         self.connect()
 
         query_embedding = self.generate_embedding("Ingredients: Flour, Sugar, Baking Powder, Baking Soda, Salt, Vanilla Extract, Egg, Milk, Butter, Chocolate Chips")
-        pipeline = [
-            {
-                    "$vectorSearch": {
-                        "index": "vector_index",
-                        "queryVector": query_embedding,
-                        "path": "embedding",
-                        "exact": True,
-                        "limit": 5
-                    }
-            }, {
-                    "$project": {
-                    "_id": 0,
-                    "name": 1,
-                    "price": 1,
-                    "ingredients": 1,
-                }
-            }
-        ]
+        # pipeline = [
+        #     {
+        #             "$vectorSearch": {
+        #                 "index": "vector_index",
+        #                 "queryVector": query_embedding,
+        #                 "path": "embedding",
+        #                 "exact": True,
+        #                 "limit": 5
+        #             }
+        #     }, {
+        #             "$project": {
+        #             "_id": 0,
+        #             "name": 1,
+        #             "price": 1,
+        #             "ingredients": 1,
+        #         }
+        #     }
+        # ]
         # pipeline = [
         #     {
         #             "$search": {
@@ -112,11 +112,11 @@ class MongoDBManager:
         #         "$limit": 20
         #     }
         # ]
-        results = self.collection.aggregate(pipeline)
-        array_of_results = []
-        for doc in results:
-            array_of_results.append(doc)
-        print(array_of_results)
+        # results = self.collection.aggregate(pipeline)
+        # array_of_results = []
+        # for doc in results:
+        #     array_of_results.append(doc)
+        # print(array_of_results)
 
     def connect(self):
         """Connect to MongoDB Atlas."""
@@ -391,39 +391,12 @@ class MongoDBManager:
             # Use MongoDB rank fusion to combine vector and text search
             pipeline = [
                 {
-                    "$rankFusion": {
-                        "input": {
-                            "pipelines": {
-                                "vectorPipeline": [
-                                    {
-                                        "$vectorSearch": {
-                                            "index": "vector_index",
-                                            "path": "embedding",
-                                            "queryVector": query_embedding,
-                                            "numCandidates": 100,
-                                            "limit": 20
-                                        }
-                                    }
-                                ],
-                                "fullTextPipeline": [
-                                    {
-                                        "$search": {
-                                            "index": "text_index",
-                                            "text": {
-                                                "query": query,
-                                                "path": "searchable_text"
-                                            }
-                                        }
-                                    }
-                                ]
-                            }
-                        },
-                        "combination": {
-                            "weights": {
-                                "vectorPipeline": 0.7,
-                                "fullTextPipeline": 0.3
-                            }
-                        }
+                    "$vectorSearch": {
+                        "index": "vector_index",
+                        "queryVector": query_embedding,
+                        "path": "embedding",
+                        "numCandidates": limit * 5,
+                        "limit": limit
                     }
                 },
                 {
@@ -436,11 +409,8 @@ class MongoDBManager:
                         "instructions": 1,
                         "features": 1,
                         "url": 1,
-                        "score": 1
+                        "score": {"$meta": "vectorSearchScore"}
                     }
-                },
-                {
-                    "$limit": limit
                 }
             ]
             
