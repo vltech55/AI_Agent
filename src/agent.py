@@ -13,7 +13,7 @@ import re
 from datetime import datetime
 
 from .database import MongoDBManager
-from .embeddings import EmbeddingService
+# Removed AtlasVectorSearchService - using database search methods directly
 from .config import settings
 
 # Set up logging
@@ -42,7 +42,7 @@ class KingArthurBakingAgent:
             openai_api_key=settings.openai_api_key
         )
         self.db_manager = MongoDBManager()
-        self.embedding_service = EmbeddingService()
+        # Use database search methods directly
         self.graph = self.create_graph()
         
     def create_graph(self) -> StateGraph:
@@ -143,13 +143,13 @@ class KingArthurBakingAgent:
         """Search for products based on the query."""
         try:
             # Use hybrid search for best results
-            search_results = self.embedding_service.hybrid_search(state.user_query, limit=10)
+            search_results = self.db_manager.hybrid_search(state.user_query, limit=10)
             
             # If no results, try with keywords
             if not search_results:
                 keywords = " ".join(state.context.get("keywords", []))
                 if keywords:
-                    search_results = self.embedding_service.hybrid_search(keywords, limit=10)
+                    search_results = self.db_manager.hybrid_search(keywords, limit=10)
             
             state.search_results = search_results
             state.tool_calls.append("hybrid_search")
@@ -169,7 +169,7 @@ class KingArthurBakingAgent:
             keywords = state.context.get("keywords", [])
             preferences = keywords + state.context.get("requirements", [])
             
-            recommendations = self.embedding_service.get_product_recommendations(
+            recommendations = self.db_manager.get_product_recommendations(
                 preferences, limit=8
             )
             
@@ -192,13 +192,13 @@ class KingArthurBakingAgent:
             query_lower = state.user_query.lower()
             
             # First, search for products mentioned in the query
-            products_to_compare = self.embedding_service.hybrid_search(state.user_query, limit=5)
+            products_to_compare = self.db_manager.hybrid_search(state.user_query, limit=5)
             
             # If we have products, get similar ones for comparison
             if products_to_compare:
                 comparison_results = []
                 for product in products_to_compare[:3]:  # Compare top 3
-                    similar = self.embedding_service.find_similar_products(
+                    similar = self.db_manager.find_similar_products(
                         str(product['_id']), limit=2
                     )
                     comparison_results.extend([product] + similar)
@@ -346,13 +346,23 @@ class KingArthurBakingAgent:
             # Run the graph
             final_state = self.graph.invoke(initial_state)
             
-            return {
-                "response": final_state.response,
-                "products": final_state.search_results,
-                "analysis": final_state.analysis,
-                "tool_calls": final_state.tool_calls,
-                "step": final_state.step
-            }
+            # Handle both AgentState objects and dictionaries
+            if isinstance(final_state, dict):
+                return {
+                    "response": final_state.get("response", "I apologize, but I couldn't generate a proper response."),
+                    "products": final_state.get("search_results", []),
+                    "analysis": final_state.get("analysis", ""),
+                    "tool_calls": final_state.get("tool_calls", []),
+                    "step": final_state.get("step", "unknown")
+                }
+            else:
+                return {
+                    "response": final_state.response,
+                    "products": final_state.search_results,
+                    "analysis": final_state.analysis,
+                    "tool_calls": final_state.tool_calls,
+                    "step": final_state.step
+                }
             
         except Exception as e:
             logger.error(f"Error in chat: {e}")
