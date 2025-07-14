@@ -1,3 +1,14 @@
+---
+title: King Arthur Baking AI Assistant
+emoji: 🍰
+colorFrom: orange
+colorTo: red
+sdk: streamlit
+sdk_version: "1.28.0"
+app_file: app.py
+pinned: false
+---
+
 # 🍰 King Arthur Baking AI Assistant
 
 A sophisticated AI-powered assistant for King Arthur Baking mixes using RAG (Retrieval-Augmented Generation) with LangGraph, OpenAI, and MongoDB Atlas.
