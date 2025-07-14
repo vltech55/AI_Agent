@@ -714,9 +714,10 @@ def initialize_session_state():
             st.session_state.initialization_error = None
         if 'pending_query' not in st.session_state:
             st.session_state.pending_query = None
+        if 'thread_id' not in st.session_state:
+            st.session_state.thread_id = f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     except Exception as e:
         logger.error(f"Error initializing session state: {e}")
-        st.error("Failed to initialize application state. Please refresh the page.")
 
 def validate_user_input(prompt: str) -> tuple[bool, str]:
     """Validate user input with comprehensive checks."""
@@ -757,9 +758,9 @@ def initialize_components():
         
     except Exception as e:
         error_msg = f"Failed to initialize components: {str(e)}"
+        logger.error(error_msg)
         st.session_state.initialization_error = error_msg
-        logger.error(f"Initialization error: {e}")
-        st.markdown(f'<div class="error-message">❌ {error_msg}</div>', unsafe_allow_html=True)
+        st.error(f"⚠️ {error_msg}")
         return False
 
 def render_header():
@@ -900,7 +901,15 @@ def render_database_stats():
 
 def render_chat_interface():
     """Render the main chat interface with stable layout and no auto-scroll."""
-    st.markdown("### <i class='fas fa-comments'></i> Chat", unsafe_allow_html=True)
+    # Create header with new chat button
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        st.markdown("### <i class='fas fa-comments'></i> Chat", unsafe_allow_html=True)
+    with col2:
+        if st.button("🔄 New Chat", key="new_chat_btn", help="Start a new conversation"):
+            st.session_state.chat_history = []
+            st.session_state.thread_id = f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            st.rerun()
     
     # Check if components are initialized
     if st.session_state.initialization_error:
@@ -948,16 +957,16 @@ def render_chat_interface():
                 
                 # Show products if available
                 if message.get("products"):
-                    render_product_cards(message["products"])   
-
+                    render_product_cards(message["products"])
+    
     # Show processing indicator if currently processing
     if st.session_state.is_processing:
         st.markdown("""
         <div class="loading-message">
             <i class="fas fa-spinner fa-spin"></i> Processing your request...
-        </div>
-        """, unsafe_allow_html=True)
-
+            </div>
+            """, unsafe_allow_html=True)
+            
 def render_chat_input():
     
     # Chat input form section
@@ -1015,8 +1024,8 @@ def render_chat_input():
         
         # Process the query immediately
         try:
-            # Use the agent to get response
-            response = st.session_state.agent.chat(prompt)
+            # Use the agent to get response with thread_id for context
+            response = st.session_state.agent.chat(prompt, thread_id=st.session_state.thread_id)
             
             # Extract response content safely
             if isinstance(response, dict):
@@ -1034,7 +1043,7 @@ def render_chat_input():
                 "timestamp": datetime.now().strftime("%H:%M:%S")
             }
             st.session_state.chat_history.append(assistant_message)
-            
+                
         except Exception as e:
             error_msg = f"I apologize, but I encountered an error while processing your request. Please try again."
             logger.error(f"Chat error: {e}")
