@@ -6,7 +6,6 @@ from langgraph.prebuilt import ToolNode
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
-from langchain_community.tools.tavily_search import TavilySearchResults
 from langchain_core.tools import tool
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
@@ -23,18 +22,24 @@ from .config import settings
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# tool = TavilySearchResults(max_results=4)
-# print(type(tool))
-# print(tool.name)
-
 prompt = """You are a smart AI Assistant for King Arthur Baking.
 You are allowed to make multiple calls (either together or in sequence).
 Only look up information when you are sure of what you want.
+
 There are two tools you can use to get information:
 1. retrieve_information: This tool performs semantic/hybrid search over product descriptions, ingredients, and details. Use this for natural language queries like "chocolate cake mix" or "gluten-free options".
 2. query_information: This tool accepts natural language queries that get converted to MongoDB queries. Use this for specific queries like "most expensive products" or "products under $10". Do NOT pass MongoDB syntax directly - use natural language.
 
+If the user wants exact count, price, images, type, or list of products and query with exact information. You should use query_information tool.
+If the user wants you to recommend, which means user don't know exact information. You should use retrieve_information tool.
+
 If you need to look up some information before asking a follow up question, you are allowed to do that!
+You have to make response as fast as you can.
+
+After gathering information, you have to generate a response to the user's query.
+Make sure that:
+1. You are answering the user's query.
+2. You are providing specific product recommendations with details.
 """
 
 mongo_schema = """"""
@@ -42,55 +47,54 @@ example_document = """"""
 custom_fields_description = """Here's an explanation of each field:
 
 1. SKU (Stock Keeping Unit): 213793
-
 A unique identifier for the product used for inventory management.
+
 2. UPC (Universal Product Code): 071012000630
-
 A barcode symbol that's widely used to identify products in retail.
+
 3. Maximum Purchase: 12 units
-
 The maximum quantity of the product that can be purchased at one time.
+
 4. swym-disabled: false
-
 Indicates whether the product is impacted by certain external services, possibly related to wishlist services (Swym).
+
 5. _Promo_Exclusion: No
-
 Indicates if the product is excluded from promotions.
+
 6. Various badge fields: (e.g., _badge_glutenfree, _badge_kosherpareve)
-
 These fields indicate different certifications or attributes, such as whether the product is gluten-free, kosher, organic, made in the USA, etc. All are marked "No," meaning these attributes do not apply to the product.
+
 7. _Parent_Category: Mixes
-
 The main category to which this product belongs.
+
 8. _Child_Category: Cookies
-
 A subcategory within the parent category.
+
 9. _Online_Exclusive: 0
-
 Indicates whether the product is exclusive to online sales. A value of 0 suggests it's not online exclusive.
+
 10. _sale_label, _clearance_label: No
-
 Indicates if the product is on sale or clearance. Both are set to "No."
+
 11. _free_ship_label, _ground_ship_label: No
-
 Indicates if the product qualifies for free or ground shipping. Both labels are set to "No."
+
 12. _new_label: Yes
-
 Shows that the product is considered new.
+
 13. _label_path, _package_path:
-
 Paths to the product’s label and packaging files, which may be used for display purposes.
+
 14. _type_label, _flavor_label, _category_label:
-
 Descriptions of the product type, flavor (Lemon), and relevant categories (Dessert, Snack).
+
 15. _review_avg_score: 4.7
-
 The average customer review score, which is quite high.
+
 16. _review_count: 14
-
 The number of reviews the product has received.
-17. _Special_Savings, _special_savings_label: No
 
+17. _Special_Savings, _special_savings_label: No
 Indicates the absence of any special savings associated with the product."""
 
 with open('src/schema-king_arthur_baking_db-mixes-mongoDBJSON.json', 'r') as file:
@@ -133,7 +137,7 @@ class KingArthurBakingAgent:
             """Hybrid search for information from Atlas."""
             try:
                 print(f"Retrieving information for {query}")
-                search_results = self.db_manager.hybrid_search(query, limit=10)
+                search_results = self.db_manager.hybrid_search(query)
                 if search_results:
                     # Format results for the LLM
                     formatted_results = []
@@ -157,7 +161,7 @@ class KingArthurBakingAgent:
 
         extracted_doc = {}
 
-        extract_fields = ["name", "plain_text_description", "price", "sales_info", "review_summary", "ingredients", "details", "Contains"]
+        extract_fields = ["name", "price", "plain_text_description", "images", "details", "Contains"]
         for field in extract_fields:
             if field in doc:
                 extracted_doc[field] = str(doc[field])
@@ -231,18 +235,83 @@ class KingArthurBakingAgent:
                     
                     And here is the example document:
                     {example_document}
+                    You have to understand the mongodb schema and the example document.
 
-                    example pipeline:
+                    example queries and pipelines:
+                    ***
+                    query: most expensive product
+                    pipeline:
                     [
-                        {{"$match": {{"name": "chocolate cake mix"}}}},
+                        {{"$sort": {{"$sales_info.orig_price": -1}}}},
+                        {{"$limit": 1}}
+                    ]
+
+                    query: most expensive 10 products
+                    pipeline:
+                    [
+                        {{"$sort": {{"$sales_info.orig_price": -1}}}},
                         {{"$limit": 10}}
                     ]
 
-                    You have to understand the mongodb schema and the example document.
-                    Understand what user is looking for and generate the pipeline accordingly.                    
+                    query: most fallen price product
+                    pipeline:
+                    [
+                        {{"$sort": {{"$sales_info.savings": -1}}}},
+                        {{"$limit": 1}}
+                    ]
+
+                    query: most fallen price 10 products
+                    pipeline:
+                    [
+                        {{"$sort": {{"$sales_info.savings": -1}}}},
+                        {{"$limit": 10}}
+                    ]
+
+                    query: How many products categories do you have?
+                    pipeline:
+                    [
+                        {{"$match": {{"custom_fields._Child_Category": {{"$ne": None}}}}}},
+                        {{"$group": {{"_id": "$custom_fields._Child_Category"}}}},
+                        {{"$count": "distinct_child_categories"}}
+                    ]
+]
+                    query: How many products categories do you have? Make a list of them.
+                    pipeline:
+                    [
+                        {{"$match": {{"custom_fields._Child_Category": {{"$ne": None}}}}}},
+                        {{"$group": {{"_id": "$custom_fields._Child_Category"}}}},
+                        {{"$group": {{"_id": None, "uniqueChildCategories": {{"$addToSet": "$_id"}}, "count": {{"$sum": 1}}}}}},
+                        {{"$project": {{"uniqueChildCategories": 1, "count": 1}}}}
+                    ]
+
+                    query: How many flavors are there?
+                    pipeline:
+                    [
+                        {{"$match": {{"custom_fields._flavor_label": {{"$exists": True, "$ne": ''}}}}}},
+                        {{"$group": {{"_id": None, "distinct_flavors": {{"$addToSet": "$custom_fields._flavor_label"}}}}}},
+                        {{"$project": {{"number_of_flavors": {{"$size": "$distinct_flavors"}}}}}}
+                    ]
+
+                    query: Show me the list of flavors.
+                    pipeline:
+                    [
+                        {{"$group": {{"_id": None, "flavors": {{"$addToSet": "$custom_fields._flavor_label"}}}}}},
+                        {{"$project": {{"_id": 0, "flavors": 1}}}}
+                    ]
+
+                    query: show the products group by flavors.
+                    pipeline:
+                    [
+                        {{"$project": {{"name": 1, "custom_fields._flavor_label": 1}}}},
+                        {{"$group": {{"_id": "$custom_fields._flavor_label", "products": {{"$push": {{"product_name": "$name"}}}}}}}}
+                    ]
+                    ***
+                    If there might be lots of documents as a result you should use limit and sort.
+
                     Generate a valid MongoDB aggregation pipeline (as JSON array) that can be used with collection.aggregate(pipeline).
                     Collection is the pymongo collection. The package is pymongo>=4.6.1.
-                    Return ONLY the JSON array, no explanations.
+                    pipeline should be a valid JSON array. Starts with [ and ends with ].
+                    Return ONLY the JSON array, no explanations. No other characters in front or back of the array.
                     """),
                     HumanMessage(content=f"User query: {query}")
                 ])
@@ -414,61 +483,7 @@ class KingArthurBakingAgent:
             logger.error(f"Error getting recommendations: {e}")
             state.search_results = []
             return state
-
-    def generate_response(self, state: AgentState) -> AgentState:
-        """Generate the final response to the user."""
-        try:
-            # Prepare product details for response
-            product_details = []
-            for product in state.search_results:
-                details = {
-                    "name": product.get("name", "Unknown"),
-                    "description": product.get("description", ""),
-                    "price": product.get("price", ""),
-                    "ingredients": product.get("ingredients", ""),
-                    "instructions": product.get("instructions", ""),
-                    "features": product.get("features", []),
-                    "url": product.get("url", "")
-                }
-                product_details.append(details)
-            
-            response_prompt = ChatPromptTemplate.from_messages([
-                SystemMessage(content="""You are a friendly and knowledgeable baking assistant for King Arthur Baking.
-                
-                Generate a helpful response that:
-                1. Directly answers the user's question
-                2. Provides specific product recommendations with details
-                3. Includes practical baking tips when relevant
-                4. Mentions prices and key features
-                5. Suggests where to find more information
-                
-                Format your response in a conversational, helpful tone.
-                Include specific product names, prices, and key details.
-                """),
-                HumanMessage(content=f"""
-                User Query: {state.user_query}
-                
-                Analysis: {state.analysis}
-                
-                Products Found:
-                {json.dumps(product_details, indent=2)}
-                
-                Generate a helpful response:
-                """)
-            ])
-            
-            response = self.llm.invoke(response_prompt.format_messages())
-            state.response = response.content
-            state.step = "completed"
-            
-            logger.info("Generated final response")
-            return state
-            
-        except Exception as e:
-            logger.error(f"Error generating response: {e}")
-            state.response = "I apologize, but I encountered an error while generating a response. Please try again."
-            return state
-    
+  
     def chat(self, user_query: str, thread_id: Optional[str] = None) -> Dict[str, Any]:
         """Main chat interface."""
         try:
@@ -521,44 +536,6 @@ class KingArthurBakingAgent:
             # Run the graph with proper configuration
             final_state = self.graph.invoke(initial_state, config)
             return final_state
-            
-            # Handle both AgentState objects and dictionaries
-            if isinstance(final_state, dict):
-                # Extract the response from the last message
-                messages = final_state.get("messages", [])
-                response_content = ""
-                if messages:
-                    last_message = messages[-1]
-                    if hasattr(last_message, 'content'):
-                        response_content = last_message.content
-                    elif isinstance(last_message, dict):
-                        response_content = last_message.get('content', '')
-                
-                return {
-                    "response": response_content or "I apologize, but I couldn't generate a proper response.",
-                    "products": final_state.get("search_results", []),
-                    "analysis": final_state.get("analysis", ""),
-                    "tool_calls": final_state.get("tool_calls", []),
-                    "step": final_state.get("step", "unknown"),
-                    "thread_id": thread_id
-                }
-            else:
-                # Handle AgentState object
-                messages = final_state.messages
-                response_content = ""
-                if messages:
-                    last_message = messages[-1]
-                    if hasattr(last_message, 'content'):
-                        response_content = last_message.content
-            
-            return {
-                    "response": response_content or final_state.response,
-                "products": final_state.search_results,
-                "analysis": final_state.analysis,
-                "tool_calls": final_state.tool_calls,
-                    "step": final_state.step,
-                    "thread_id": thread_id
-            }
             
         except Exception as e:
             logger.error(f"Error in chat: {e}")

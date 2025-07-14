@@ -273,7 +273,7 @@ class MongoDBManager:
                 logger.error(f"Fallback regex search failed: {fallback_error}")
                 return []
 
-    def semantic_search(self, query: str, limit: int = 5, threshold: float = 0.3) -> List[Dict]:
+    def semantic_search(self, query: str, limit: int = 10, threshold: float = 0.3) -> List[Dict]:
         """Perform semantic search using MongoDB vector search."""
         try:
             # Generate embedding for the query
@@ -322,7 +322,7 @@ class MongoDBManager:
             # Fallback to text search
             return self.search_products(query, limit)
 
-    def hybrid_search(self, query: str, limit: int = 5) -> List[Dict]:
+    def hybrid_search(self, query: str, limit: int = 10) -> List[Dict]:
         """Combine semantic search with text search for better results using MongoDB $rankFusion."""
         try:
             # Generate embedding for the query
@@ -348,9 +348,12 @@ class MongoDBManager:
                         "_id": 1,
                         "name": 1,
                         "price": 1,
-                        "description": 1,
+                        "plain_text_description": 1,
                         "ingredients": 1,
-                        "instructions": 1,
+                        "details": 1,
+                        "Contains": 1,
+                        "custom_fields": 1,
+                        "allergen_link": 1,
                         "features": 1,
                         "url": 1,
                         "score": {"$meta": "vectorSearchScore"}
