@@ -24,9 +24,14 @@ logger = logging.getLogger(__name__)
 def apply_professional_styles():
     st.markdown("""
     <style>
-        /* Modern fonts */
+        /* Modern fonts - Fallback safe for HF Spaces */
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
         @import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css');
+        
+        /* Fallback fonts if imports fail */
+        * {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+        }
 
         /* Modern Facebook-like Design System */
         :root {
@@ -55,10 +60,10 @@ def apply_professional_styles():
             --radius-xl: 16px;
         }
 
-        /* Base layout */
+        /* Base layout - Enhanced for Hugging Face Spaces */
         .main {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-            background: var(--background);
+            background: var(--background) !important;
             color: var(--text-primary);
         }
 
@@ -66,6 +71,30 @@ def apply_professional_styles():
             max-width: 1200px;
             padding: 1.5rem;
             margin: 0 auto;
+        }
+
+        /* Force background on all Streamlit containers */
+        .stApp {
+            background: var(--background) !important;
+            background-color: #f0f2f5 !important;
+        }
+
+        .stApp > div {
+            background: var(--background) !important;
+            background-color: #f0f2f5 !important;
+        }
+
+        /* Ensure background covers full viewport */
+        html, body, [data-testid="stAppViewContainer"] {
+            background: var(--background) !important;
+            background-color: #f0f2f5 !important;
+        }
+
+        /* Additional background enforcement for HF Spaces */
+        div[data-testid="stAppViewContainer"] > .main {
+            background: var(--background) !important;
+            background-color: #f0f2f5 !important;
+            min-height: 100vh !important;
         }
 
         /* Modern header */
@@ -615,7 +644,12 @@ def render_chat_view():
                 render_product_cards(message["products"])
 
 def main():
-    st.set_page_config(page_title="King Arthur Baking AI", layout="centered")
+    st.set_page_config(
+        page_title="King Arthur Baking AI", 
+        layout="centered",
+        initial_sidebar_state="expanded",
+        page_icon="🍞"
+    )
     apply_professional_styles()
     initialize_session_state()
     

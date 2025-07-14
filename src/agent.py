@@ -484,6 +484,43 @@ class KingArthurBakingAgent:
             state.search_results = []
             return state
   
+    def _estimate_tokens(self, text: str) -> int:
+        """Estimate token count for text (rough approximation)."""
+        return int(len(text.split()) * 1.3)  # Rough estimate: 1.3 tokens per word
+    
+    def _truncate_conversation_history(self, messages: List[Any], max_tokens: int = 20000) -> List[Any]:
+        """Truncate conversation history to stay within token limits."""
+        if not messages:
+            return messages
+        
+        # Always keep the system message if it exists
+        system_messages = [msg for msg in messages if isinstance(msg, SystemMessage)]
+        other_messages = [msg for msg in messages if not isinstance(msg, SystemMessage)]
+        
+        # Calculate tokens for system messages
+        system_tokens = sum(self._estimate_tokens(str(msg.content)) for msg in system_messages)
+        remaining_tokens = max_tokens - system_tokens - 5000  # Reserve 5000 tokens for response
+        
+        if remaining_tokens <= 0:
+            # If system message is too long, just keep basic system prompt
+            return [SystemMessage(content=self.system_prompt)]
+        
+        # Keep recent messages within token limit
+        truncated_messages = []
+        current_tokens = 0
+        
+        # Start from the end (most recent) and work backwards
+        for msg in reversed(other_messages):
+            msg_tokens = self._estimate_tokens(str(msg.content))
+            if current_tokens + msg_tokens <= remaining_tokens:
+                truncated_messages.insert(0, msg)
+                current_tokens += msg_tokens
+            else:
+                break
+        
+        # Combine system messages with truncated conversation
+        return system_messages + truncated_messages
+
     def chat(self, user_query: str, thread_id: Optional[str] = None) -> Dict[str, Any]:
         """Main chat interface."""
         try:
@@ -497,16 +534,19 @@ class KingArthurBakingAgent:
             # Try to get existing state from checkpointer
             try:
                 # Get the current state from the checkpointer
-                current_state = self.graph.get_state(config)
+                current_state = self.graph.get_state(config)  # type: ignore
                 if current_state and current_state.values.get("messages"):
                     # Add new user message to existing conversation
                     existing_messages = current_state.values["messages"]
                     new_message = HumanMessage(content=user_query)
                     existing_messages.append(new_message)
                     
+                    # Truncate conversation history to avoid token limits
+                    truncated_messages = self._truncate_conversation_history(existing_messages)
+                    
                     initial_state = AgentState(
                         user_query=user_query,
-                        messages=existing_messages,
+                        messages=truncated_messages,
                         search_results=current_state.values.get("search_results", []),
                         analysis=current_state.values.get("analysis", ""),
                         response=current_state.values.get("response", ""),
@@ -534,7 +574,7 @@ class KingArthurBakingAgent:
                 )
             
             # Run the graph with proper configuration
-            final_state = self.graph.invoke(initial_state, config)
+            final_state = self.graph.invoke(initial_state, config)  # type: ignore
             return final_state
             
         except Exception as e:
