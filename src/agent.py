@@ -112,13 +112,14 @@ class AgentState(BaseModel):
 class KingArthurBakingAgent:
     """AI Agent for King Arthur Baking mixes with advanced retrieval and reasoning."""
     
-    def __init__(self):
+    def __init__(self, db_manager: Optional['MongoDBManager'] = None):
         self.system_prompt = prompt
         self.llm = ChatOpenAI(
             model=settings.llm_model,
             temperature=settings.temperature
         )
-        self.db_manager = MongoDBManager()
+        # Use provided database manager or create new one
+        self.db_manager = db_manager if db_manager is not None else MongoDBManager()
         # Create the tool with access to db_manager
         self.tools = [self._create_retrieve_tool(), self._create_mongo_query_tool()]
         self.llm = self.llm.bind_tools(self.tools)

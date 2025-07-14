@@ -708,8 +708,6 @@ def initialize_session_state():
             st.session_state.db_manager = None
         if 'is_processing' not in st.session_state:
             st.session_state.is_processing = False
-        if 'currently_processing' not in st.session_state:
-            st.session_state.currently_processing = False
         if 'last_query_time' not in st.session_state:
             st.session_state.last_query_time = 0
         if 'initialization_error' not in st.session_state:
@@ -745,15 +743,15 @@ def initialize_components():
         # Show loading state
         loading_placeholder = st.empty()
         
-        # Initialize agent
-        if st.session_state.agent is None:
-            loading_placeholder.markdown('<div class="loading-message">Initializing AI agent...</div>', unsafe_allow_html=True)
-            st.session_state.agent = KingArthurBakingAgent()
-        
-        # Initialize database manager
+        # Initialize database manager first
         if st.session_state.db_manager is None:
             loading_placeholder.markdown('<div class="loading-message">Connecting to database...</div>', unsafe_allow_html=True)
             st.session_state.db_manager = MongoDBManager()
+        
+        # Initialize agent with existing database manager
+        if st.session_state.agent is None:
+            loading_placeholder.markdown('<div class="loading-message">Initializing AI agent...</div>', unsafe_allow_html=True)
+            st.session_state.agent = KingArthurBakingAgent(db_manager=st.session_state.db_manager)
         
         loading_placeholder.empty()
         return True
@@ -969,7 +967,7 @@ def render_chat_interface():
             <div style="display: flex; align-items: center; gap: 10px;">
                 <i class="fas fa-robot fa-2x" style="color: #4CAF50; animation: bounce 1s infinite;"></i>
                 <div>
-                    <strong style="color: #2196F3;">🤖 AI Assistant is thinking...</strong>
+                    <strong style="color: #2196F3;">AI Assistant is thinking...</strong>
                     <br>
                     <small style="color: #666; font-style: italic;">Processing: "{query_preview}"</small>
                 </div>
@@ -1027,27 +1025,51 @@ def render_chat_input():
                 use_container_width=True
             )
     
-    # Process the form submission with immediate feedback
+    # Handle new submission
     if submit_button and prompt and prompt.strip():
-        # Validate input
+        # Validate input first
         is_valid, validation_error = validate_user_input(prompt)
         if not is_valid:
             st.error(validation_error)
             return
         
-        # Prevent concurrent processing
+        # Prevent duplicate submissions
         if st.session_state.is_processing:
             st.warning("Please wait for the current request to complete.")
             return
         
-        # Check if this message was already processed (prevent duplicates)
+        # Check if this exact message was just processed (prevent duplicates)
         if (st.session_state.chat_history and 
+            len(st.session_state.chat_history) >= 1 and
             st.session_state.chat_history[-1].get("content") == prompt and
             st.session_state.chat_history[-1].get("role") == "user"):
             return
         
-        # Set processing state immediately
+        # Process the message immediately without rerun
+        process_user_message(prompt)
+    
+    # Show processing status without triggering additional processing
+    if st.session_state.is_processing and st.session_state.get('pending_query'):
+        query_preview = st.session_state.pending_query[:50] + "..." if len(st.session_state.pending_query) > 50 else st.session_state.pending_query
+        st.markdown(f"""
+        <div class="processing-indicator" style="background: linear-gradient(45deg, #f0f8ff, #e6f3ff); border: 2px solid #4CAF50; border-radius: 10px; padding: 15px; margin: 10px 0;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <i class="fas fa-robot fa-2x" style="color: #4CAF50;"></i>
+                <div>
+                    <strong style="color: #2196F3;">AI Assistant is thinking...</strong>
+                    <br>
+                    <small style="color: #666; font-style: italic;">Processing: "{query_preview}"</small>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+def process_user_message(prompt: str):
+    """Process a user message without causing multiple executions."""
+    try:
+        # Set processing flags
         st.session_state.is_processing = True
+        st.session_state.pending_query = prompt
         st.session_state.last_query_time = time.time()
         
         # Add user message to history immediately
@@ -1058,68 +1080,44 @@ def render_chat_input():
         }
         st.session_state.chat_history.append(user_message)
         
-        # Set flag to trigger processing in next rerun
-        st.session_state.pending_query = prompt
-        
-        # Rerun to show user message immediately
-        st.rerun()
-    
-    # Process pending query if exists (this runs on the next rerun)
-    if (st.session_state.get('pending_query') and 
-        st.session_state.is_processing and
-        not st.session_state.get('currently_processing', False)):
-        
-        # Set flag to prevent duplicate processing
-        st.session_state.currently_processing = True
-        prompt = st.session_state.pending_query
-        
-        # Show loading indicator
-        with st.spinner(f"🤖 Processing your question: \"{prompt[:50]}...\""):
-            try:
-                # Use the agent to get response with thread_id for context
-                response = st.session_state.agent.chat(prompt, thread_id=st.session_state.thread_id)
-                
-                # Extract response content safely
-                if isinstance(response, dict):
-                    content = response["messages"][-1].content if response["messages"] else "I apologize, but I couldn't process your request."
-                    products = response.get("products", [])
-                else:
-                    content = str(response) if response else "I apologize, but I couldn't generate a response."
-                    products = []
-                
-                # Add assistant message to history
-                assistant_message = {
-                    "role": "assistant",
-                    "content": content,
-                    "products": products,
-                    "timestamp": datetime.now().strftime("%H:%M:%S")
-                }
-                st.session_state.chat_history.append(assistant_message)
-                    
-            except Exception as e:
-                error_msg = f"I apologize, but I encountered an error while processing your request. Please try again."
-                logger.error(f"Chat error: {e}")
-                
-                # Add error message to history
-                error_message = {
-                    "role": "assistant",
-                    "content": error_msg,
-                    "products": [],
-                    "timestamp": datetime.now().strftime("%H:%M:%S")
-                }
-                st.session_state.chat_history.append(error_message)
+        # Process with the agent
+        with st.spinner("🤖 Processing your question..."):
+            response = st.session_state.agent.chat(prompt, thread_id=st.session_state.thread_id)
             
-            finally:
-                # Clear processing flags
-                st.session_state.is_processing = False
-                st.session_state.currently_processing = False
-                st.session_state.pending_query = None
+            # Extract response content safely
+            if isinstance(response, dict):
+                content = response["messages"][-1].content if response["messages"] else "I apologize, but I couldn't process your request."
+                products = response.get("products", [])
+            else:
+                content = str(response) if response else "I apologize, but I couldn't generate a response."
+                products = []
+            
+            # Add assistant message to history
+            assistant_message = {
+                "role": "assistant",
+                "content": content,
+                "products": products,
+                "timestamp": datetime.now().strftime("%H:%M:%S")
+            }
+            st.session_state.chat_history.append(assistant_message)
                 
-                # Rerun to show the response
-                st.rerun()
+    except Exception as e:
+        error_msg = f"I apologize, but I encountered an error while processing your request. Please try again."
+        logger.error(f"Chat error: {e}")
+        
+        # Add error message to history
+        error_message = {
+            "role": "assistant",
+            "content": error_msg,
+            "products": [],
+            "timestamp": datetime.now().strftime("%H:%M:%S")
+        }
+        st.session_state.chat_history.append(error_message)
     
-    elif not submit_button and prompt and prompt.strip():
-        st.error("Please enter a message before sending!")
+    finally:
+        # Clear processing flags
+        st.session_state.is_processing = False
+        st.session_state.pending_query = None
 
 def main():
     """Main application function with improved error handling."""
