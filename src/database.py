@@ -24,49 +24,52 @@ class MongoDBManager:
 
 
     def connect(self):
-        """Connect to MongoDB Atlas with SSL configuration."""
+        """Connect to MongoDB Atlas with SSL configuration via connection string."""
         try:
-            # SSL configuration for better compatibility
-            ssl_options = {
-                'ssl': True,
-                'ssl_cert_reqs': 'CERT_NONE',  # Don't verify SSL certificates
-                'ssl_match_hostname': False,   # Don't verify hostname
-                'serverSelectionTimeoutMS': 30000,  # 30 seconds timeout
-                'socketTimeoutMS': 30000,
-                'connectTimeoutMS': 30000,
-                'maxPoolSize': 1,  # Limit connection pool size
-                'retryWrites': True
-            }
+            # Strategy 1: Use connection string with SSL parameters
+            base_uri = settings.mongodb_uri
             
-            # Try with SSL configuration first
-            try:
-                self.client = MongoClient(settings.mongodb_uri, **ssl_options)
-                # Test the connection
-                self.client.admin.command('ping')
-                logger.info("MongoDB connected successfully with SSL configuration")
-            except Exception as ssl_error:
-                logger.warning(f"SSL connection failed: {ssl_error}")
-                # Fallback to basic connection
-                logger.info("Trying basic connection without explicit SSL config...")
-                self.client = MongoClient(settings.mongodb_uri)
-                self.client.admin.command('ping')
-                logger.info("MongoDB connected successfully with basic configuration")
+            # Add SSL parameters to connection string if not already present
+            ssl_params = [
+                "tls=true",
+                "tlsAllowInvalidCertificates=true", 
+                "tlsAllowInvalidHostnames=true",
+                "serverSelectionTimeoutMS=30000",
+                "socketTimeoutMS=30000",
+                "connectTimeoutMS=30000"
+            ]
             
+            if '?' in base_uri:
+                # Check if SSL params already exist
+                if 'tls=' not in base_uri:
+                    ssl_uri = f"{base_uri}&{'&'.join(ssl_params)}"
+                else:
+                    ssl_uri = base_uri
+            else:
+                ssl_uri = f"{base_uri}?{'&'.join(ssl_params)}"
+            
+            logger.info("Attempting to connect to MongoDB with SSL parameters...")
+            self.client = MongoClient(ssl_uri)
+            
+            # Test the connection
+            self.client.admin.command('ping')
             self.db = self.client[settings.mongodb_db_name]
             self.collection = self.db[settings.mongodb_collection_name]
             
             logger.info("Successfully connected to MongoDB Atlas")
             
             # Create indexes
-            self.create_indexes()
+            # self.create_indexes()
             
         except Exception as e:
             logger.error(f"Failed to connect to MongoDB: {e}")
-            # Set client and collection to None on failure
+            logger.error("Please check your MongoDB URI and network connectivity")
+            logger.error("For Hugging Face Spaces deployment, ensure SSL parameters are in the connection string")
+            
+            # Set to None on failure but don't raise - let app continue with degraded functionality
             self.client = None
             self.db = None
             self.collection = None
-            raise
 
     def create_indexes(self):
         """Create necessary indexes for the collection."""
