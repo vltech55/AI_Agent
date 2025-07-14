@@ -776,7 +776,7 @@ def render_product_cards(products: List[Dict]):
     if not products:
         return
     
-    st.markdown("### <i class='fas fa-shopping-cart'></i> Recommended Products")
+    st.markdown("### <i class='fas fa-shopping-cart'></i> Recommended Products", unsafe_allow_html=True)
     
     # Limit to 6 products for better display
     products_to_show = products[:6]
@@ -948,8 +948,8 @@ def render_chat_interface():
                 
                 # Show products if available
                 if message.get("products"):
-                    render_product_cards(message["products"])
-    
+                    render_product_cards(message["products"])   
+
     # Show processing indicator if currently processing
     if st.session_state.is_processing:
         st.markdown("""
@@ -957,6 +957,8 @@ def render_chat_interface():
             <i class="fas fa-spinner fa-spin"></i> Processing your request...
         </div>
         """, unsafe_allow_html=True)
+
+def render_chat_input():
     
     # Chat input form section
     st.markdown("### <i class='fas fa-paper-plane'></i> Send Message", unsafe_allow_html=True)
@@ -1018,7 +1020,7 @@ def render_chat_interface():
             
             # Extract response content safely
             if isinstance(response, dict):
-                content = response.get("response", "I apologize, but I couldn't process your request.")
+                content = response["messages"][-1].content if response["messages"] else "I apologize, but I couldn't process your request."
                 products = response.get("products", [])
             else:
                 content = str(response) if response else "I apologize, but I couldn't generate a response."
@@ -1073,6 +1075,7 @@ def main():
         with col1:
             # Main chat interface
             render_chat_interface()
+            render_chat_input()
             
             # Control buttons with professional icons
             col_clear, col_refresh = st.columns([1, 1])
