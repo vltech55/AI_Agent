@@ -13,6 +13,8 @@ from pydantic import BaseModel, Field
 import re
 from datetime import datetime
 from bson import ObjectId
+import threading
+import uuid
 
 from .database import MongoDBManager
 # Removed AtlasVectorSearchService - using database search methods directly
@@ -21,6 +23,13 @@ from .config import settings
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Global lock for thread-safe agent operations
+_agent_lock = threading.Lock()
+
+# Thread-safe checkpointer cache
+_checkpointer_cache = {}
+_checkpointer_lock = threading.Lock()
 
 prompt = """You are a smart AI Assistant for King Arthur Baking.
 You are allowed to make multiple calls (either together or in sequence).
@@ -32,6 +41,9 @@ There are two tools you can use to get information:
 
 If the user wants exact count, price, images, type, or list of products and query with exact information. You should use query_information tool.
 If the user wants you to recommend, which means user don't know exact information. You should use retrieve_information tool.
+
+Here is some special cases:
+If there is no result from query_information tool, you should use retrieve_information tool first, take one result and understand it and then use query_information tool with the information you have gathered.
 
 If you need to look up some information before asking a follow up question, you are allowed to do that!
 You have to make response as fast as you can.
@@ -83,7 +95,7 @@ Indicates if the product qualifies for free or ground shipping. Both labels are 
 Shows that the product is considered new.
 
 13. _label_path, _package_path:
-Paths to the product’s label and packaging files, which may be used for display purposes.
+Paths to the product's label and packaging files, which may be used for display purposes.
 
 14. _type_label, _flavor_label, _category_label:
 Descriptions of the product type, flavor (Lemon), and relevant categories (Dessert, Snack).
@@ -97,11 +109,20 @@ The number of reviews the product has received.
 17. _Special_Savings, _special_savings_label: No
 Indicates the absence of any special savings associated with the product."""
 
-with open('src/schema-king_arthur_baking_db-mixes-mongoDBJSON.json', 'r') as file:
-    mongo_schema = json.load(file)
+try:
+    with open('src/schema-king_arthur_baking_db-mixes-mongoDBJSON.json', 'r') as file:
+        mongo_schema = json.load(file)
+except FileNotFoundError:
+    logger.warning("Schema file not found, using empty schema")
+    mongo_schema = {}
 
-with open('src/document-king_arthur_baking_db-minxes.json', 'r') as file:
-    example_document = json.load(file)
+try:
+    with open('src/document-king_arthur_baking_db-minxes.json', 'r') as file:
+        example_document = json.load(file)
+except FileNotFoundError:
+    logger.warning("Example document file not found, using empty document")
+    example_document = {}
+
 class AgentState(BaseModel):
     """State for the AI agent."""
     messages: List[Any] = Field(default_factory=list)
@@ -113,10 +134,19 @@ class AgentState(BaseModel):
     context: Dict = Field(default_factory=dict)
     step: str = "start"
 
+def get_thread_safe_checkpointer(thread_id: str) -> MemorySaver:
+    """Get or create a thread-safe checkpointer for the given thread ID."""
+    with _checkpointer_lock:
+        if thread_id not in _checkpointer_cache:
+            _checkpointer_cache[thread_id] = MemorySaver()
+            logger.info(f"Created new checkpointer for thread {thread_id}")
+        return _checkpointer_cache[thread_id]
+
 class KingArthurBakingAgent:
     """AI Agent for King Arthur Baking mixes with advanced retrieval and reasoning."""
     
-    def __init__(self, db_manager: Optional['MongoDBManager'] = None):
+    def __init__(self, db_manager: Optional['MongoDBManager'] = None, user_id: Optional[str] = None):
+        self.user_id = user_id or str(uuid.uuid4())[:8]
         self.system_prompt = prompt
         self.llm = ChatOpenAI(
             model=settings.llm_model,
@@ -126,9 +156,12 @@ class KingArthurBakingAgent:
         self.db_manager = db_manager if db_manager is not None else MongoDBManager()
         # Create the tool with access to db_manager
         self.tools = [self._create_retrieve_tool(), self._create_mongo_query_tool()]
+        self.extract_fields = []
         self.llm = self.llm.bind_tools(self.tools)
         # Use database search methods directly
         self.graph = self.create_graph()
+        self._lock = threading.Lock()  # Per-agent instance lock
+        logger.info(f"Initialized agent for user {self.user_id}")
     
     def _create_retrieve_tool(self):
         """Create a tool for retrieving information from the database."""
@@ -136,7 +169,9 @@ class KingArthurBakingAgent:
         def retrieve_information(query: str) -> str:
             """Hybrid search for information from Atlas."""
             try:
-                print(f"Retrieving information for {query}")
+                print(f"[{self.user_id}] Retrieving information for {query}")
+                
+                self.extract_fields = self.generate_necessary_fields(query)
                 search_results = self.db_manager.hybrid_search(query)
                 if search_results:
                     # Format results for the LLM
@@ -154,89 +189,101 @@ class KingArthurBakingAgent:
         
         return retrieve_information
     
-    def generate_response(self, state: AgentState) -> AgentState:
+    def generate_necessary_fields(self, query: str) -> List[str]:
         """Generate the final response to the user."""
         try:
-            # Prepare product details for response
-            product_details = []
-            for product in state.search_results:
-                details = {
-                    "name": product.get("name", "Unknown"),
-                    "description": product.get("description", ""),
-                    "price": product.get("price", ""),
-                    "ingredients": product.get("ingredients", ""),
-                    "instructions": product.get("instructions", ""),
-                    "features": product.get("features", []),
-                    "url": product.get("url", "")
-                }
-                product_details.append(details)
-            
             response_prompt = ChatPromptTemplate.from_messages([
                 SystemMessage(content="""You are a friendly and knowledgeable baking assistant for King Arthur Baking.
                 
-                Generate a helpful response that:
-                1. Directly answers the user's question
-                2. Provides specific product recommendations with details
-                3. Includes practical baking tips when relevant
-                4. Mentions prices and key features
-                5. Suggests where to find more information
+                Understand the user query and generate a list of fields that need to be brought from the MongoDB collection.
+                Make sure that you are bringing the fields that are relevant to the user query.
+                And bringing fields as least as possible.
+
+                Here is the MongoDB Collection schema:
+                {mongo_schema}
+
+                It is scraped data from https://shop.kingarthurbaking.com/mixes.
+
+                And here is the custom fields description:
+                {custom_fields_description}                    
                 
-                Format your response in a conversational, helpful tone.
-                Include specific product names, prices, and key details.
+                And here is the example document:
+                {example_document}
+                You have to understand the mongodb schema and the example document.
+
+                You can list any field from the schema.
+
+                example queries and fields:
+                ***
+                query: most expensive product
+                mongo_query: [{'$sort': {'$sales_info.orig_price': -1}}, {'$limit': 1}]
+                fields: ["name", "price", "plain_text_description", "images", "details", "Contains"]
+
+                query: most expensive 10 products
+                mongo_query: [{'$sort': {'$sales_info.orig_price': -1}}, {'$limit': 10}]
+                fields: ["name", "price", "plain_text_description"]
+
+                query: most fallen price product
+                mongo_query: [{'$sort': {'$sales_info.savings': -1}}, {'$limit': 1}]
+                fields: ["name", "price", "plain_text_description"]
+
+                query: show the image
+                mongo_query: ""
+                fields: ["name", "images", "details"]
+
+                query: best seller products
+                mongo_query: ""
+                fields: ["name", "price", "plain_text_description", "custom_fields"]
+
+                query: total products count group by flavor
+                mongo_query: [{"$group": {"_id": "$custom_fields._flavor_label", "count": {"$sum": 1}}}]
+                fields: ["_id", "count"]
+
+                query: total products count
+                mongo_query: [{"$count": "total_products"}]
+                fields: ["total_products"]
+                ***
+                You should bring all fields that are not in the schema but coming from the MongoDB query.
+
+                We have token limit with you. So you should bring fields as least as possible.
+                I will send you the data with the fields you have brought next time.
+
+                Format your response as a list of strings.
                 """),
                 HumanMessage(content=f"""
-                User Query: {state.user_query}
-                
-                Analysis: {state.analysis}
-                
-                Products Found:
-                {json.dumps(product_details, indent=2)}
-                
-                Generate a helpful response:
+                    User Query: {query}
                 """)
             ])
+
+            print(f"[{self.user_id}] Generating necessary fields")
             
             response = self.llm.invoke(response_prompt.format_messages())
-            state.response = response.content
-            state.step = "completed"
-            
-            logger.info("Generated final response")
-            return state
+            print(f"[{self.user_id}] Generated necessary fields: {response.content}")
+            try:
+                # Ensure response.content is a string before parsing
+                content = str(response.content) if hasattr(response, 'content') else str(response)
+                return json.loads(content)
+            except (json.JSONDecodeError, TypeError) as e:
+                logger.error(f"[{self.user_id}] Error parsing necessary fields: {e}")
+                return ["name", "price", "plain_text_description"]  # Fallback fields             
             
         except Exception as e:
-            logger.error(f"Error generating response: {e}")
-            state.response = "I apologize, but I encountered an error while generating a response. Please try again."
-            return state
+            logger.error(f"[{self.user_id}] Error generating response: {e}")
+            response = "I apologize, but I encountered an error while generating a response. Please try again."
+            return []
     
     def bson_object_id_to_str(self, doc):
         """Convert BSON ObjectId and datetime objects to strings for JSON serialization."""
-        import datetime
         from bson import ObjectId
 
         extracted_doc = {}
 
-        extract_fields = ["name", "price", "plain_text_description", "images", "details", "Contains"]
-        for field in extract_fields:
-            if field in doc:
+        for field in self.extract_fields:
+            print(f"[{self.user_id}] Processing field: {field}")
+            if field in doc and doc[field] is not None:
                 extracted_doc[field] = str(doc[field])
 
-        if isinstance(extracted_doc, dict):
-            for key, value in extracted_doc.items():
-                if isinstance(value, ObjectId):
-                    extracted_doc[key] = str(value)
-                elif isinstance(value, datetime.datetime):
-                    extracted_doc[key] = value.isoformat()
-                elif isinstance(value, dict):
-                    extracted_doc[key] = self.bson_object_id_to_str(value)
-                elif isinstance(value, list):
-                    extracted_doc[key] = [self.bson_object_id_to_str(item) if isinstance(item, (dict, ObjectId, datetime.datetime)) 
-                               else str(item) if isinstance(item, ObjectId) 
-                               else item.isoformat() if isinstance(item, datetime.datetime)
-                               else item for item in value]
-        elif isinstance(extracted_doc, ObjectId):
-            return str(extracted_doc)
-        elif isinstance(extracted_doc, datetime.datetime):
-            return extracted_doc.isoformat()
+        print(f"[{self.user_id}] Extracted document: {extracted_doc}")
         
         return extracted_doc
 
@@ -258,7 +305,7 @@ class KingArthurBakingAgent:
                 # Handle both string and dict inputs for backward compatibility
                 if isinstance(query, dict):
                     # If a dict is passed, it might be a direct MongoDB query
-                    print(f"WARNING: Received dict instead of string query: {query}")
+                    print(f"[{self.user_id}] WARNING: Received dict instead of string query: {query}")
                     # Try to convert common dict patterns to natural language
                     if 'price' in query and '$exists' in str(query):
                         query = "products with price information"
@@ -266,14 +313,14 @@ class KingArthurBakingAgent:
                         query = "all products"
                     else:
                         query = "products matching criteria"
-                    print(f"Converted to natural language query: {query}")
+                    print(f"[{self.user_id}] Converted to natural language query: {query}")
                 
                 # Validate the query parameter
                 if not query or not isinstance(query, str) or not query.strip():
                     return "Error: Empty or invalid query provided. Please provide a valid search query."
                 
                 query = query.strip()
-                print(f"Generating MongoDB query...for '{query}'")
+                print(f"[{self.user_id}] Generating MongoDB query for '{query}'")
                 
                 query_prompt = ChatPromptTemplate.from_messages([
                     SystemMessage(content=f"""
@@ -328,7 +375,7 @@ class KingArthurBakingAgent:
                         {{"$group": {{"_id": "$custom_fields._Child_Category"}}}},
                         {{"$count": "distinct_child_categories"}}
                     ]
-]
+
                     query: How many products categories do you have? Make a list of them.
                     pipeline:
                     [
@@ -371,8 +418,7 @@ class KingArthurBakingAgent:
                 ])
                 
                 response = self.llm.invoke(query_prompt.format_messages())
-                print("----------------------Query Generated---------------------")
-                print(f"Generated MongoDB query: {response.content}")
+                print(f"[{self.user_id}] Generated MongoDB query: {response.content}")
                 
                 # Parse the response as JSON
                 import json
@@ -396,13 +442,15 @@ class KingArthurBakingAgent:
                         else:
                             raise ValueError("Could not extract valid JSON from response")
                 
-                print('---------------------------------mongo_query---------------------------------', mongo_query)
+                print(f'[{self.user_id}] Parsed MongoDB query: {mongo_query}')
                 
                 # Execute the MongoDB query using the database manager
                 if self.db_manager.collection is not None:
                     search_results = list(self.db_manager.collection.aggregate(mongo_query))
                 else:
                     search_results = []
+                    
+                self.extract_fields = self.generate_necessary_fields(query)
                 
                 if search_results:
                     # Format results for the LLM
@@ -422,7 +470,7 @@ class KingArthurBakingAgent:
         return query_information
         
     def create_graph(self):
-        """Create the LangGraph workflow."""
+        """Create the LangGraph workflow with thread-safe checkpointer."""
         workflow = StateGraph(AgentState)
 
         workflow.add_node("agent", self.call_model)
@@ -432,19 +480,18 @@ class KingArthurBakingAgent:
         workflow.add_conditional_edges("agent", self.should_continue)  # Decision after the "agent" node
         workflow.add_edge("tools", "agent")
         
-        checkpointer = MemorySaver()
-
-        # Compile the graph into a LangChain Runnable application
-        return workflow.compile(checkpointer=checkpointer)
+        # Note: We'll use per-thread checkpointers when invoking the graph
+        return workflow.compile()
     
     def call_model(self, state: AgentState) -> AgentState:
-        logger.info(f"Calling model with state: {state.messages[-1].content}")
-        messages = state.messages
-        response = self.llm.invoke(messages)
-        # Only append the response if it's not already in the messages
-        if not messages or messages[-1] != response:
-            state.messages.append(response)
-        return state
+        logger.info(f"[{self.user_id}] Calling model with state: {state.messages[-1].content if state.messages else 'empty'}")
+        with self._lock:
+            messages = state.messages
+            response = self.llm.invoke(messages)
+            # Only append the response if it's not already in the messages
+            if not messages or messages[-1] != response:
+                state.messages.append(response)
+            return state
     
     def should_continue(self, state: AgentState):
         messages = state.messages
@@ -459,62 +506,63 @@ class KingArthurBakingAgent:
         """Execute tools and add results to messages."""
         from langchain_core.messages import ToolMessage
         
-        messages = state.messages
-        last_message = messages[-1]
-        
-        if hasattr(last_message, 'tool_calls') and last_message.tool_calls:
-            tool_results = []
-            for tool_call in last_message.tool_calls:
-                # Find the tool by name
-                tool_name = tool_call.get('name', '')
-                tool_args = tool_call.get('args', {})
-                
-                # Add debugging for tool calls
-                print(f"DEBUG: Executing tool '{tool_name}' with args: {tool_args}")
-                
-                # Validate tool arguments before execution
-                if tool_name in ['query_information', 'retrieve_information']:
-                    query_param = tool_args.get('query', '')
-                    if not query_param or not isinstance(query_param, str) or not query_param.strip():
-                        print(f"WARNING: Empty or invalid query parameter for tool '{tool_name}': {query_param}")
-                        tool_result = f"Error: Tool '{tool_name}' received empty or invalid query parameter."
-                        # Create tool message
-                        tool_message = ToolMessage(
-                            content=tool_result,
-                            tool_call_id=tool_call.get('id', ''),
-                            name=tool_name
-                        )
-                        tool_results.append(tool_message)
-                        continue
-                
-                # Find and execute the appropriate tool
-                tool_result = None
-                for tool in self.tools:
-                    if tool.name == tool_name:
-                        try:
-                            # Call the tool using invoke method
-                            tool_result = tool.invoke(tool_args)
-                            break
-                        except Exception as e:
-                            print(f"ERROR: Tool execution failed for '{tool_name}': {str(e)}")
-                            tool_result = f"Error executing {tool_name}: {str(e)}"
-                            break
-                
-                if tool_result is None:
-                    tool_result = f"Tool '{tool_name}' not found"
-                
-                # Create tool message
-                tool_message = ToolMessage(
-                    content=tool_result,
-                    tool_call_id=tool_call.get('id', ''),
-                    name=tool_name
-                )
-                tool_results.append(tool_message)
+        with self._lock:
+            messages = state.messages
+            last_message = messages[-1]
             
-            # Add tool results to messages
-            state.messages.extend(tool_results)
-        
-        return state
+            if hasattr(last_message, 'tool_calls') and last_message.tool_calls:
+                tool_results = []
+                for tool_call in last_message.tool_calls:
+                    # Find the tool by name
+                    tool_name = tool_call.get('name', '')
+                    tool_args = tool_call.get('args', {})
+                    
+                    # Add debugging for tool calls
+                    print(f"[{self.user_id}] Executing tool '{tool_name}' with args: {tool_args}")
+                    
+                    # Validate tool arguments before execution
+                    if tool_name in ['query_information', 'retrieve_information']:
+                        query_param = tool_args.get('query', '')
+                        if not query_param or not isinstance(query_param, str) or not query_param.strip():
+                            print(f"[{self.user_id}] WARNING: Empty or invalid query parameter for tool '{tool_name}': {query_param}")
+                            tool_result = f"Error: Tool '{tool_name}' received empty or invalid query parameter."
+                            # Create tool message
+                            tool_message = ToolMessage(
+                                content=tool_result,
+                                tool_call_id=tool_call.get('id', ''),
+                                name=tool_name
+                            )
+                            tool_results.append(tool_message)
+                            continue
+                    
+                    # Find and execute the appropriate tool
+                    tool_result = None
+                    for tool in self.tools:
+                        if tool.name == tool_name:
+                            try:
+                                # Call the tool using invoke method
+                                tool_result = tool.invoke(tool_args)
+                                break
+                            except Exception as e:
+                                print(f"[{self.user_id}] ERROR: Tool execution failed for '{tool_name}': {str(e)}")
+                                tool_result = f"Error executing {tool_name}: {str(e)}"
+                                break
+                    
+                    if tool_result is None:
+                        tool_result = f"Tool '{tool_name}' not found"
+                    
+                    # Create tool message
+                    tool_message = ToolMessage(
+                        content=tool_result,
+                        tool_call_id=tool_call.get('id', ''),
+                        name=tool_name
+                    )
+                    tool_results.append(tool_message)
+                
+                # Add tool results to messages
+                state.messages.extend(tool_results)
+            
+            return state
 
     def get_recommendations(self, state: AgentState) -> AgentState:
         """Get product recommendations based on preferences."""
@@ -530,11 +578,11 @@ class KingArthurBakingAgent:
             state.tool_calls.append("get_recommendations")
             state.step = "recommended"
             
-            logger.info(f"Generated {len(recommendations)} recommendations")
+            logger.info(f"[{self.user_id}] Generated {len(recommendations)} recommendations")
             return state
             
         except Exception as e:
-            logger.error(f"Error getting recommendations: {e}")
+            logger.error(f"[{self.user_id}] Error getting recommendations: {e}")
             state.search_results = []
             return state
   
@@ -542,7 +590,7 @@ class KingArthurBakingAgent:
         """Estimate token count for text (rough approximation)."""
         return int(len(text.split()) * 1.3)  # Rough estimate: 1.3 tokens per word
     
-    def _truncate_conversation_history(self, messages: List[Any], max_tokens: int = 20000) -> List[Any]:
+    def _truncate_conversation_history(self, messages: List[Any], max_tokens: int = 30000) -> List[Any]:
         """Truncate conversation history to stay within token limits."""
         if not messages:
             return messages
@@ -553,7 +601,7 @@ class KingArthurBakingAgent:
         
         # Calculate tokens for system messages
         system_tokens = sum(self._estimate_tokens(str(msg.content)) for msg in system_messages)
-        remaining_tokens = max_tokens - system_tokens - 5000  # Reserve 5000 tokens for response
+        remaining_tokens = max_tokens - system_tokens - 4000  # Reserve 4000 tokens for response
         
         if remaining_tokens <= 0:
             # If system message is too long, just keep basic system prompt
@@ -576,19 +624,32 @@ class KingArthurBakingAgent:
         return system_messages + truncated_messages
 
     def chat(self, user_query: str, thread_id: Optional[str] = None) -> Dict[str, Any]:
-        """Main chat interface."""
+        """Main chat interface with thread-safe operations."""
         try:
             # Use provided thread_id or create a new one
             if thread_id is None:
-                thread_id = f"chat_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                thread_id = f"chat_{self.user_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
             
-            # Create configuration for the checkpointer
-            config = {"configurable": {"thread_id": thread_id}}
+            # Get thread-safe checkpointer for this thread
+            checkpointer = get_thread_safe_checkpointer(thread_id)
+            
+            # Create configuration for the checkpointer (compatible with RunnableConfig)
+            from langchain_core.runnables import RunnableConfig
+            config = RunnableConfig(configurable={"thread_id": thread_id})
+            
+            # Create a new graph instance with the specific checkpointer for this thread
+            workflow = StateGraph(AgentState)
+            workflow.add_node("agent", self.call_model)
+            workflow.add_node("tools", self.execute_tools)
+            workflow.add_edge(START, "agent")
+            workflow.add_conditional_edges("agent", self.should_continue)
+            workflow.add_edge("tools", "agent")
+            graph_with_checkpointer = workflow.compile(checkpointer=checkpointer)
             
             # Try to get existing state from checkpointer
             try:
                 # Get the current state from the checkpointer
-                current_state = self.graph.get_state(config)  # type: ignore
+                current_state = graph_with_checkpointer.get_state(config)
                 if current_state and current_state.values.get("messages"):
                     # Add new user message to existing conversation
                     existing_messages = current_state.values["messages"]
@@ -628,11 +689,63 @@ class KingArthurBakingAgent:
                 )
             
             # Run the graph with proper configuration
-            final_state = self.graph.invoke(initial_state, config)  # type: ignore
-            return final_state
+            final_state = graph_with_checkpointer.invoke(initial_state, config)
+            
+            # Extract and format the response properly
+            try:
+                # Get the last assistant message
+                messages = final_state.get("messages", []) if isinstance(final_state, dict) else getattr(final_state, "messages", [])
+                
+                assistant_content = ""
+                products = []
+                
+                # Find the last AI/assistant message
+                for msg in reversed(messages):
+                    if hasattr(msg, '__class__') and 'AI' in msg.__class__.__name__:
+                        assistant_content = str(msg.content)
+                        break
+                
+                # Extract products from search results if available
+                search_results = final_state.get("search_results", []) if isinstance(final_state, dict) else getattr(final_state, "search_results", [])
+                
+                # Format search results as products
+                if search_results:
+                    for result in search_results[:5]:  # Limit to 5 products
+                        if isinstance(result, dict):
+                            product = {
+                                "name": result.get("name", "Unknown Product"),
+                                "price": result.get("price", "Price not available"),
+                                "description": str(result.get("plain_text_description", result.get("description", "No description")))[:200],
+                                "url": result.get("url", "")
+                            }
+                            products.append(product)
+                
+                # Return properly formatted response
+                return {
+                    "messages": messages,
+                    "response": assistant_content,
+                    "products": products,
+                    "search_results": search_results,
+                    "analysis": final_state.get("analysis", "") if isinstance(final_state, dict) else getattr(final_state, "analysis", ""),
+                    "tool_calls": final_state.get("tool_calls", []) if isinstance(final_state, dict) else getattr(final_state, "tool_calls", []),
+                    "step": final_state.get("step", "completed") if isinstance(final_state, dict) else getattr(final_state, "step", "completed")
+                }
+                
+            except Exception as format_error:
+                logger.error(f"[{self.user_id}] Error formatting response: {format_error}")
+                # Fallback response
+                return {
+                    "messages": messages if 'messages' in locals() else [],
+                    "response": assistant_content if 'assistant_content' in locals() else "I processed your request.",
+                    "products": [],
+                    "search_results": [],
+                    "analysis": "",
+                    "tool_calls": [],
+                    "step": "completed"
+                }
             
         except Exception as e:
-            logger.error(f"Error in chat: {e}")
+            logger.error(f"[{self.user_id}] Error in chat: {e}")
             return {
                 "response": "I apologize, but I encountered an error. Please try again.",
                 "products": [],
@@ -648,6 +761,7 @@ class KingArthurBakingAgent:
             db_stats = self.db_manager.get_stats()
             
             return {
+                "user_id": self.user_id,
                 "database_stats": db_stats,
                 "model_info": {
                     "llm_model": settings.llm_model,
@@ -664,10 +778,8 @@ class KingArthurBakingAgent:
             }
             
         except Exception as e:
-            logger.error(f"Error getting stats: {e}")
+            logger.error(f"[{self.user_id}] Error getting stats: {e}")
             return {}
-
-
 
 def main():
     """Main function to test the agent."""
