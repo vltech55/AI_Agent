@@ -1,0 +1,165 @@
+{
+    "_id": {
+        "$oid": "6874b24a43eb8dc0fe3013b2"
+    },
+    "name": "Lemon Bar Mix",
+    "sku": "213793",
+    "price": 8.95,
+    "url": "https://shop.kingarthurbaking.com/items/lemon-bar-mix",
+    "aria_label": "Lemon Bar Mix, $8.95",
+    "entity_id": 1666,
+    "plain_text_description": "Introducing our new Lemon Bar Mix!\nYou asked, and we listened: enjoy delicious lemon bars whenever the craving strikes with our Lemon Bar Mix! This delightful mix delivers a perfect balance of sweet and tart flavors, featuring zesty lemon paired with a crunchy shortbread crust that melts in your mouth. Whether enjoyed as a midday treat, a refreshing dessert after dinner, or a crowd-pleaser at gatherings, these lemon bars are incredibly easy to make and are sure to brighten any occasion. Just add a few simple ingredients, bake, and savor the sunshine in every bite!\nServing suggestion: Add powdered sugar for a festive presentation!",
+    "path": "/items/lemon-bar-mix",
+    "brand": "KINGARTHUR",
+    "categories": [
+        {
+            "name": "Mixes",
+            "path": "/mixes"
+        },
+        {
+            "name": "Cookies & Bars",
+            "path": "/mixes/cookies-bars"
+        },
+        {
+            "name": "New Products",
+            "path": "/collections/new-products"
+        },
+        {
+            "name": "Summer Favorites",
+            "path": "/collections/seasonal"
+        },
+        {
+            "name": "Seasonal",
+            "path": "/mixes/seasonal"
+        },
+        {
+            "name": "Best Sellers",
+            "path": "/collections/best-sellers"
+        }
+    ],
+    "custom_fields": {
+        "swym-disabled": "false",
+        "_Promo_Exclusion": "No",
+        "_badge_glutenfree": "No",
+        "_badge_kosherpareve": "No",
+        "_badge_kosherdairy": "No",
+        "_badge_organic": "No",
+        "_badge_wholegrain": "No",
+        "_badge_wholegrain50": "No",
+        "_badge_wholegrain100": "No",
+        "_badge_sourcednongmo": "No",
+        "_badge_nongmo": "No",
+        "_badge_madeintheusa": "No",
+        "_badge_1percent": "0",
+        "_badge_1for1": "0",
+        "_badge_recycle": "0",
+        "_badge_ketofriendly": "0",
+        "_badge_justaddwater": "0",
+        "_badge_bcorp": "0",
+        "_Parent_Category": "Mixes",
+        "_Child_Category": "Cookies",
+        "_Online_Exclusive": "0",
+        "_KAB_Exclusive": "0",
+        "_sale_label": "No",
+        "_clearance_label": "No",
+        "_free_ship_label": "No",
+        "_ground_ship_label": "No",
+        "_new_label": "Yes",
+        "_label_path": "/content/label-path/213793.jpg",
+        "_package_path": "/content/packaging/213793.pdf",
+        "_type_label": "Cookie",
+        "_flavor_label": "Lemon",
+        "_category_label": "Snack",
+        "_review_avg_score": "4.7",
+        "_review_count": "14",
+        "_Special_Savings": "No",
+        "_special_savings_label": "No"
+    },
+    "ingredients": "Cane Sugar, King Arthur Unbleached Flour (wheat flour, enzyme), Lemon Juice Powder (maltodextrin, lemon juice concentrate), Wheat Starch, Citric Acid, Sea Salt.",
+    "Contains": [
+        "Wheat"
+    ],
+    "allergen_link": "https://www.kingarthurbaking.com/allergen-program",
+    "details": [
+        "Makes sixteen 2-inch squares.",
+        "Includes Lemon Filling mix and Crust mix.",
+        "Just add eggs and water.",
+        "Directions included for making the mix into cheesecake bars.",
+        "No artificial colors or flavors",
+        "No preservatives",
+        "Non-GMO"
+    ],
+    "instructions": null,
+    "variants": [
+        {
+            "entity_id": 2074,
+            "sku": "213793",
+            "weight": {
+                "value": 1.438,
+                "unit": "oz"
+            },
+            "prices": {
+                "price": 8.95,
+                "currency": "USD",
+                "sale_price": null
+            },
+            "inventory": {
+                "is_in_stock": true
+            },
+            "default_image": {}
+        }
+    ],
+    "images": [
+        {
+            "url": "https://cdn11.bigcommerce.com/s-ihwnd7z21q/images/stencil/original/products/1666/8645/213793_package__72820.1736965086.jpg",
+            "alt_text": "Lemon Bar Mix packaging"
+        },
+        {
+            "url": "https://cdn11.bigcommerce.com/s-ihwnd7z21q/images/stencil/original/products/1666/8590/Lemon-Bar-Mix-stack__28570.1736965074.jpg",
+            "alt_text": "Lemon bars made with the Lemon Bar Mix"
+        },
+        {
+            "url": "https://cdn11.bigcommerce.com/s-ihwnd7z21q/images/stencil/original/products/1666/8510/213793_Lemon-Bar-Mix__36072.1736965074.jpg",
+            "alt_text": "Lemon bars made with the Lemon Bar Mix"
+        },
+        {
+            "url": "https://cdn11.bigcommerce.com/s-ihwnd7z21q/images/stencil/original/products/1666/8526/213793_Lemon-Bar-Mix__45507.1736965074.jpg",
+            "alt_text": "Lemon bars made with the Lemon Bar Mix"
+        },
+        {
+            "url": "https://cdn11.bigcommerce.com/s-ihwnd7z21q/images/stencil/original/products/1666/8576/Lemon-Bar-Mix-Shop-Hero-crop__00554.1736965074.jpg",
+            "alt_text": "Lemon bars made with the Lemon Bar Mix"
+        },
+        {
+            "url": "https://cdn11.bigcommerce.com/s-ihwnd7z21q/images/stencil/original/products/1666/8540/213793_back__03414.1736965074.jpg",
+            "alt_text": "Lemon Bar Mix packaging"
+        }
+    ],
+    "review_summary": {
+        "1": 1,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 13,
+        "number_of_reviews": 14,
+        "average_rating": 4.7
+    },
+    "nutrition_info": {
+        "nutrition_link": "https://shop.kingarthurbaking.com/content/packaging/213793.pdf"
+    },
+    "sales_info": {
+        "orig_price": 8.95,
+        "saving": 0
+    },
+    "enhanced_at": 1752476794.4150267,
+    "enhanced": true,
+    "enhancement_version": "integrated_v1",
+    "searchable_text": "This is a mix named Lemon Bar Mix. Introducing our new Lemon Bar Mix!\nYou asked, and we listened: enjoy delicious lemon bars whenever the craving strikes with our Lemon Bar Mix! This delightful mix delivers a perfect balance of sweet and tart flavors, featuring zesty lemon paired with a crunchy shortbread crust that melts in your mouth. Whether enjoyed as a midday treat, a refreshing dessert after dinner, or a crowd-pleaser at gatherings, these lemon bars are incredibly easy to make and are sure to brighten any occasion. Just add a few simple ingredients, bake, and savor the sunshine in every bite!\nServing suggestion: Add powdered sugar for a festive presentation!. The ingredients are Cane Sugar, King Arthur Unbleached Flour (wheat flour, enzyme), Lemon Juice Powder (maltodextrin, lemon juice concentrate), Wheat Starch, Citric Acid, Sea Salt.. Here is the details: Makes sixteen 2-inch squares., Includes Lemon Filling mix and Crust mix., Just add eggs and water., Directions included for making the mix into cheesecake bars., No artificial colors or flavors, No preservatives, Non-GMO. This mix contains Wheat. The custom fields are {'swym-disabled': 'false', '_Promo_Exclusion': 'No', '_badge_glutenfree': 'No', '_badge_kosherpareve': 'No', '_badge_kosherdairy': 'No', '_badge_organic': 'No', '_badge_wholegrain': 'No', '_badge_wholegrain50': 'No', '_badge_wholegrain100': 'No', '_badge_sourcednongmo': 'No', '_badge_nongmo': 'No', '_badge_madeintheusa': 'No', '_badge_1percent': '0', '_badge_1for1': '0', '_badge_recycle': '0', '_badge_ketofriendly': '0', '_badge_justaddwater': '0', '_badge_bcorp': '0', '_Parent_Category': 'Mixes', '_Child_Category': 'Cookies', '_Online_Exclusive': '0', '_KAB_Exclusive': '0', '_sale_label': 'No', '_clearance_label': 'No', '_free_ship_label': 'No', '_ground_ship_label': 'No', '_new_label': 'Yes', '_label_path': '/content/label-path/213793.jpg', '_package_path': '/content/packaging/213793.pdf', '_type_label': 'Cookie', '_flavor_label': 'Lemon', '_category_label': 'Snack', '_review_avg_score': '4.7', '_review_count': '14', '_Special_Savings': 'No', '_special_savings_label': 'No'}. If you want to know more about the allergens, please visit https://www.kingarthurbaking.com/allergen-program.",
+    "embedding": [],
+    "created_at": {
+        "$date": "2025-07-14T07:31:22.687Z"
+    },
+    "updated_at": {
+        "$date": "2025-07-14T07:31:22.687Z"
+    }
+}

@@ -1,0 +1,419 @@
+{
+  "$jsonSchema": {
+    "bsonType": "object",
+    "required": [
+      "_id",
+      "aria_label",
+      "created_at",
+      "embedding",
+      "entity_id",
+      "name",
+      "price",
+      "searchable_text",
+      "sku",
+      "updated_at",
+      "url"
+    ],
+    "properties": {
+      "_id": {
+        "bsonType": "objectId"
+      },
+      "allergen_link": {
+        "bsonType": "string"
+      },
+      "aria_label": {
+        "bsonType": "string"
+      },
+      "brand": {
+        "bsonType": "string"
+      },
+      "categories": {
+        "bsonType": "array",
+        "items": {
+          "bsonType": "object",
+          "properties": {
+            "name": {
+              "bsonType": "string"
+            },
+            "path": {
+              "bsonType": "string"
+            }
+          },
+          "required": [
+            "name",
+            "path"
+          ]
+        }
+      },
+      "Contains": {
+        "bsonType": "array",
+        "items": {
+          "bsonType": "string"
+        }
+      },
+      "created_at": {
+        "bsonType": "date"
+      },
+      "custom_fields": {
+        "bsonType": "object",
+        "properties": {
+          "_badge_1for1": {
+            "bsonType": "string"
+          },
+          "_badge_1percent": {
+            "bsonType": "string"
+          },
+          "_badge_bcorp": {
+            "bsonType": "string"
+          },
+          "_badge_glutenfree": {
+            "bsonType": "string"
+          },
+          "_badge_justaddwater": {
+            "bsonType": "string"
+          },
+          "_badge_ketofriendly": {
+            "bsonType": "string"
+          },
+          "_badge_kosherdairy": {
+            "bsonType": "string"
+          },
+          "_badge_kosherpareve": {
+            "bsonType": "string"
+          },
+          "_badge_madeintheusa": {
+            "bsonType": "string"
+          },
+          "_badge_nongmo": {
+            "bsonType": "string"
+          },
+          "_badge_organic": {
+            "bsonType": "string"
+          },
+          "_badge_recycle": {
+            "bsonType": "string"
+          },
+          "_badge_sourcednongmo": {
+            "bsonType": "string"
+          },
+          "_badge_wholegrain": {
+            "bsonType": "string"
+          },
+          "_badge_wholegrain100": {
+            "bsonType": "string"
+          },
+          "_badge_wholegrain50": {
+            "bsonType": "string"
+          },
+          "_best_seller_label": {
+            "bsonType": "string"
+          },
+          "_category_label": {
+            "bsonType": "string"
+          },
+          "_Child_Category": {
+            "bsonType": "string"
+          },
+          "_clearance_label": {
+            "bsonType": "string"
+          },
+          "_dietary_label": {
+            "bsonType": "string"
+          },
+          "_flavor_label": {
+            "bsonType": "string"
+          },
+          "_free_ship_label": {
+            "bsonType": "string"
+          },
+          "_ground_ship_label": {
+            "bsonType": "string"
+          },
+          "_KAB_Exclusive": {
+            "bsonType": "string"
+          },
+          "_label_path": {
+            "bsonType": "string"
+          },
+          "_limited_time_label": {
+            "bsonType": "string"
+          },
+          "_new_label": {
+            "bsonType": "string"
+          },
+          "_Online_Exclusive": {
+            "bsonType": "string"
+          },
+          "_package_path": {
+            "bsonType": "string"
+          },
+          "_Parent_Category": {
+            "bsonType": "string"
+          },
+          "_Promo_Exclusion": {
+            "bsonType": "string"
+          },
+          "_review_avg_score": {
+            "bsonType": "string"
+          },
+          "_review_count": {
+            "bsonType": "string"
+          },
+          "_sale_label": {
+            "bsonType": "string"
+          },
+          "_Special_Savings": {
+            "bsonType": "string"
+          },
+          "_special_savings_label": {
+            "bsonType": "string"
+          },
+          "_type_label": {
+            "bsonType": "string"
+          },
+          "swym-disabled": {
+            "bsonType": "string"
+          }
+        },
+        "required": [
+          "_badge_1for1",
+          "_badge_1percent",
+          "_badge_bcorp",
+          "_badge_glutenfree",
+          "_badge_justaddwater",
+          "_badge_ketofriendly",
+          "_badge_kosherdairy",
+          "_badge_kosherpareve",
+          "_badge_madeintheusa",
+          "_badge_nongmo",
+          "_badge_organic",
+          "_badge_recycle",
+          "_badge_sourcednongmo",
+          "_badge_wholegrain",
+          "_badge_wholegrain100",
+          "_badge_wholegrain50",
+          "_Child_Category",
+          "_clearance_label",
+          "_free_ship_label",
+          "_ground_ship_label",
+          "_KAB_Exclusive",
+          "_Online_Exclusive",
+          "_Parent_Category",
+          "_Promo_Exclusion",
+          "_review_avg_score",
+          "_review_count",
+          "_sale_label",
+          "_Special_Savings",
+          "_special_savings_label",
+          "swym-disabled"
+        ]
+      },
+      "details": {
+        "bsonType": "array",
+        "items": {
+          "bsonType": "string"
+        }
+      },
+      "embedding": {
+        "bsonType": "array",
+        "items": {
+          "bsonType": "double"
+        }
+      },
+      "enhanced": {
+        "bsonType": "bool"
+      },
+      "enhanced_at": {
+        "bsonType": "double"
+      },
+      "enhancement_version": {
+        "bsonType": "string"
+      },
+      "entity_id": {
+        "bsonType": [
+          "int",
+          "string"
+        ]
+      },
+      "images": {
+        "bsonType": "array",
+        "items": {
+          "bsonType": "object",
+          "properties": {
+            "alt_text": {
+              "bsonType": "string"
+            },
+            "url": {
+              "bsonType": "string"
+            }
+          },
+          "required": [
+            "alt_text",
+            "url"
+          ]
+        }
+      },
+      "ingredients": {
+        "bsonType": "string"
+      },
+      "instructions": {
+        "bsonType": "null"
+      },
+      "name": {
+        "bsonType": "string"
+      },
+      "nutrition_info": {
+        "bsonType": "object",
+        "properties": {
+          "nutrition_link": {
+            "bsonType": "string"
+          }
+        }
+      },
+      "path": {
+        "bsonType": "string"
+      },
+      "plain_text_description": {
+        "bsonType": "string"
+      },
+      "price": {
+        "bsonType": "double"
+      },
+      "review_summary": {
+        "bsonType": "object",
+        "properties": {
+          "1": {
+            "bsonType": "int"
+          },
+          "2": {
+            "bsonType": "int"
+          },
+          "3": {
+            "bsonType": "int"
+          },
+          "4": {
+            "bsonType": "int"
+          },
+          "5": {
+            "bsonType": "int"
+          },
+          "average_rating": {
+            "bsonType": "double"
+          },
+          "number_of_reviews": {
+            "bsonType": "int"
+          }
+        },
+        "required": [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "average_rating",
+          "number_of_reviews"
+        ]
+      },
+      "sales_info": {
+        "bsonType": "object",
+        "properties": {
+          "bulk_promo": {
+            "bsonType": "string"
+          },
+          "orig_price": {
+            "bsonType": "double"
+          },
+          "saving": {
+            "bsonType": "double"
+          }
+        }
+      },
+      "searchable_text": {
+        "bsonType": "string"
+      },
+      "sku": {
+        "bsonType": "string"
+      },
+      "updated_at": {
+        "bsonType": "date"
+      },
+      "url": {
+        "bsonType": "string"
+      },
+      "variants": {
+        "bsonType": "array",
+        "items": {
+          "bsonType": "object",
+          "properties": {
+            "default_image": {
+              "bsonType": "object",
+              "properties": {}
+            },
+            "entity_id": {
+              "bsonType": "int"
+            },
+            "inventory": {
+              "bsonType": "object",
+              "properties": {
+                "is_in_stock": {
+                  "bsonType": "bool"
+                }
+              },
+              "required": [
+                "is_in_stock"
+              ]
+            },
+            "prices": {
+              "bsonType": "object",
+              "properties": {
+                "currency": {
+                  "bsonType": "string"
+                },
+                "price": {
+                  "bsonType": "double"
+                },
+                "sale_price": {
+                  "bsonType": [
+                    "null",
+                    "double"
+                  ]
+                }
+              },
+              "required": [
+                "currency",
+                "price",
+                "sale_price"
+              ]
+            },
+            "sku": {
+              "bsonType": "string"
+            },
+            "weight": {
+              "bsonType": "object",
+              "properties": {
+                "unit": {
+                  "bsonType": "string"
+                },
+                "value": {
+                  "bsonType": "double"
+                }
+              },
+              "required": [
+                "unit",
+                "value"
+              ]
+            }
+          },
+          "required": [
+            "default_image",
+            "entity_id",
+            "inventory",
+            "prices",
+            "sku",
+            "weight"
+          ]
+        }
+      }
+    }
+  }
+}
