@@ -1,7 +1,7 @@
 ---
 title: King Arthur Baking AI Assistant
 emoji: 🍰
-colorFrom: orange
+colorFrom: blue
 colorTo: red
 sdk: streamlit
 sdk_version: "1.28.0"
