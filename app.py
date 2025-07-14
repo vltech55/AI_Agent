@@ -961,39 +961,20 @@ def render_chat_interface():
                 if message.get("products"):
                     render_product_cards(message["products"])
     
-    # Show processing indicator if currently processing
+    # Show processing status indicator
     if st.session_state.is_processing and st.session_state.get('pending_query'):
         query_preview = st.session_state.pending_query[:50] + "..." if len(st.session_state.pending_query) > 50 else st.session_state.pending_query
         st.markdown(f"""
-        <div class="loading-message" style="background: linear-gradient(45deg, #f0f8ff, #e6f3ff); border: 2px solid #4CAF50; border-radius: 10px; padding: 15px; margin: 10px 0; animation: pulse 2s infinite;">
+        <div class="processing-indicator" style="background: linear-gradient(45deg, #f0f8ff, #e6f3ff); border: 2px solid #4CAF50; border-radius: 10px; padding: 15px; margin: 10px 0;">
             <div style="display: flex; align-items: center; gap: 10px;">
-                <i class="fas fa-robot fa-2x" style="color: #4CAF50; animation: bounce 1s infinite;"></i>
+                <i class="fas fa-robot fa-2x" style="color: #4CAF50;"></i>
                 <div>
                     <strong style="color: #2196F3;">AI Assistant is thinking...</strong>
                     <br>
                     <small style="color: #666; font-style: italic;">Processing: "{query_preview}"</small>
                 </div>
             </div>
-            <div style="margin-top: 10px; background: #ddd; height: 4px; border-radius: 2px; overflow: hidden;">
-                <div style="background: #4CAF50; height: 100%; width: 100%; animation: progress 2s infinite;"></div>
-            </div>
         </div>
-        <style>
-        @keyframes pulse {{
-            0% {{ box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.7); }}
-            70% {{ box-shadow: 0 0 0 10px rgba(76, 175, 80, 0); }}
-            100% {{ box-shadow: 0 0 0 0 rgba(76, 175, 80, 0); }}
-        }}
-        @keyframes bounce {{
-            0%, 20%, 50%, 80%, 100% {{ transform: translateY(0); }}
-            40% {{ transform: translateY(-10px); }}
-            60% {{ transform: translateY(-5px); }}
-        }}
-        @keyframes progress {{
-            0% {{ transform: translateX(-100%); }}
-            100% {{ transform: translateX(100%); }}
-        }}
-        </style>
         """, unsafe_allow_html=True)
     elif st.session_state.is_processing:
         st.markdown("""
@@ -1063,10 +1044,11 @@ def render_chat_input():
         # Rerun to show user message immediately
         st.rerun()
     
-    # Phase 2: Process pending query (runs after rerun shows user message)
-    elif (st.session_state.get('pending_query') and 
-          st.session_state.is_processing and 
-          not st.session_state.get('processing_started')):
+    # Phase 2: Process pending query (separate check, not elif)
+    if (st.session_state.get('pending_query') and 
+        st.session_state.is_processing and 
+        not st.session_state.get('processing_started') and
+        not submit_button):  # Only process if not currently submitting
         
         # Set flag to prevent multiple processing
         st.session_state.processing_started = True
@@ -1115,22 +1097,6 @@ def render_chat_input():
                 
                 # Rerun to show the response
                 st.rerun()
-    
-    # Show processing status
-    if st.session_state.is_processing and st.session_state.get('pending_query'):
-        query_preview = st.session_state.pending_query[:50] + "..." if len(st.session_state.pending_query) > 50 else st.session_state.pending_query
-        st.markdown(f"""
-        <div class="processing-indicator" style="background: linear-gradient(45deg, #f0f8ff, #e6f3ff); border: 2px solid #4CAF50; border-radius: 10px; padding: 15px; margin: 10px 0;">
-            <div style="display: flex; align-items: center; gap: 10px;">
-                <i class="fas fa-robot fa-2x" style="color: #4CAF50;"></i>
-                <div>
-                    <strong style="color: #2196F3;">AI Assistant is thinking...</strong>
-                    <br>
-                    <small style="color: #666; font-style: italic;">Processing: "{query_preview}"</small>
-                </div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
 
 def main():
     """Main application function with improved error handling."""
@@ -1165,9 +1131,14 @@ def main():
             with col_refresh:
                 refresh_label = "Refresh"
                 if st.button(refresh_label, disabled=st.session_state.is_processing, key="refresh_btn"):
+                    # Clear all session state except chat_history and thread_id
                     st.session_state.agent = None
                     st.session_state.db_manager = None
                     st.session_state.initialization_error = None
+                    st.session_state.is_processing = False
+                    st.session_state.pending_query = None
+                    st.session_state.processing_started = False
+                    st.session_state.last_query_time = 0
                     st.rerun()
         
         with col2:
