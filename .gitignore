@@ -49,7 +49,7 @@ ehthumbs.db
 Thumbs.db
 
 # Data files
-*.json
+data/*.json
 *.csv
 *.parquet
 *.pkl
