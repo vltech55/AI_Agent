@@ -24,21 +24,48 @@ class MongoDBManager:
 
 
     def connect(self):
-        """Connect to MongoDB Atlas."""
+        """Connect to MongoDB Atlas with SSL configuration."""
         try:
-            self.client = MongoClient(settings.mongodb_uri)
+            # SSL configuration for better compatibility
+            ssl_options = {
+                'ssl': True,
+                'ssl_cert_reqs': 'CERT_NONE',  # Don't verify SSL certificates
+                'ssl_match_hostname': False,   # Don't verify hostname
+                'serverSelectionTimeoutMS': 30000,  # 30 seconds timeout
+                'socketTimeoutMS': 30000,
+                'connectTimeoutMS': 30000,
+                'maxPoolSize': 1,  # Limit connection pool size
+                'retryWrites': True
+            }
+            
+            # Try with SSL configuration first
+            try:
+                self.client = MongoClient(settings.mongodb_uri, **ssl_options)
+                # Test the connection
+                self.client.admin.command('ping')
+                logger.info("MongoDB connected successfully with SSL configuration")
+            except Exception as ssl_error:
+                logger.warning(f"SSL connection failed: {ssl_error}")
+                # Fallback to basic connection
+                logger.info("Trying basic connection without explicit SSL config...")
+                self.client = MongoClient(settings.mongodb_uri)
+                self.client.admin.command('ping')
+                logger.info("MongoDB connected successfully with basic configuration")
+            
             self.db = self.client[settings.mongodb_db_name]
             self.collection = self.db[settings.mongodb_collection_name]
             
-            # Test connection
-            self.client.admin.command('ping')
             logger.info("Successfully connected to MongoDB Atlas")
             
             # Create indexes
-            # self.create_indexes()
+            self.create_indexes()
             
         except Exception as e:
             logger.error(f"Failed to connect to MongoDB: {e}")
+            # Set client and collection to None on failure
+            self.client = None
+            self.db = None
+            self.collection = None
             raise
 
     def create_indexes(self):
