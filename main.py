@@ -177,13 +177,13 @@ Available commands:
                 
                 print("\nAI Assistant: ", end="")
                 result = agent.chat(user_input)
-                print(result['response'])
+                print(result['messages'][-1].content)
                 
                 # Show products if found
-                if result['products']:
-                    print(f"\n📦 Found {len(result['products'])} relevant products:")
-                    for i, product in enumerate(result['products'][:3], 1):
-                        print(f"{i}. {product.get('name', 'Unknown')} - {product.get('price', 'N/A')}")
+                # if result['products']:
+                #     print(f"\n📦 Found {len(result['products'])} relevant products:")
+                #     for i, product in enumerate(result['products'][:3], 1):
+                #         print(f"{i}. {product.get('name', 'Unknown')} - {product.get('price', 'N/A')}")
                 
             except KeyboardInterrupt:
                 print("\n\nThanks for using King Arthur Baking AI Assistant! 🍰")

@@ -1,10 +1,12 @@
 import json
 import logging
-from typing import List, Dict, Optional, Tuple, Any
-from langgraph.graph import StateGraph, END
+from typing import List, Dict, Optional, Tuple, Any, Literal
+from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode
+from langgraph.checkpoint.memory import MemorySaver
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
+from langchain_community.tools.tavily_search import TavilySearchResults
 from langchain_core.tools import tool
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
@@ -19,6 +21,16 @@ from .config import settings
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# tool = TavilySearchResults(max_results=4)
+# print(type(tool))
+# print(tool.name)
+
+prompt = """You are a smart AI Assistant for King Arthur Baking.
+You are allowed to make multiple calls (either together or in sequence).
+Only look up information when you are sure of what you want.
+If you need to look up some information before asking a follow up question, you are allowed to do that!
+"""
 
 class AgentState(BaseModel):
     """State for the AI agent."""
@@ -35,52 +47,147 @@ class KingArthurBakingAgent:
     """AI Agent for King Arthur Baking mixes with advanced retrieval and reasoning."""
     
     def __init__(self):
+        self.system_prompt = prompt
         self.llm = ChatOpenAI(
             model=settings.llm_model,
-            temperature=settings.temperature,
-            max_tokens=settings.max_tokens,
-            openai_api_key=settings.openai_api_key
+            temperature=settings.temperature
         )
         self.db_manager = MongoDBManager()
+        # Create the tool with access to db_manager
+        self.tools = [self._create_retrieve_tool()]
+        self.llm = self.llm.bind_tools(self.tools)
         # Use database search methods directly
         self.graph = self.create_graph()
+    
+    def _create_retrieve_tool(self):
+        """Create a tool for retrieving information from the database."""
+        @tool
+        def retrieve_information(query: str) -> str:
+            """Hybrid search for information from Atlas."""
+            try:
+                search_results = self.db_manager.hybrid_search(query, limit=10)
+                if search_results:
+                    # Format results for the LLM
+                    formatted_results = []
+                    for result in search_results:
+                        formatted_results.append(f"Product: {result.get('name', 'Unknown')}\n"
+                                               f"Description: {result.get('description', 'No description')}\n"
+                                               f"Price: {result.get('price', 'Price not available')}\n")
+                    return "\n".join(formatted_results)
+                else:
+                    return "No products found matching your query."
+            except Exception as e:
+                return f"Error searching for products: {str(e)}"
         
-    def create_graph(self) -> StateGraph:
+        return retrieve_information
+        
+    def create_graph(self):
         """Create the LangGraph workflow."""
         workflow = StateGraph(AgentState)
-        
+
+        workflow.add_node("agent", self.call_model)
+        workflow.add_node("tools", self.execute_tools)
+
+        workflow.add_edge(START, "agent")
+        workflow.add_conditional_edges("agent", self.should_continue)  # Decision after the "agent" node
+        workflow.add_edge("tools", "agent")
+
         # Define nodes
-        workflow.add_node("analyze_query", self.analyze_query)
-        workflow.add_node("search_products", self.search_products)
-        workflow.add_node("reason_about_results", self.reason_about_results)
-        workflow.add_node("generate_response", self.generate_response)
-        workflow.add_node("get_recommendations", self.get_recommendations)
-        workflow.add_node("compare_products", self.compare_products)
+        # workflow.add_node("analyze_query", self.analyze_query)h
+        # workflow.add_node("search_products", self.search_products)
+        # workflow.add_node("reason_about_results", self.reason_about_results)
+        # workflow.add_node("generate_response", self.generate_response)
+        # workflow.add_node("get_recommendations", self.get_recommendations)
+        # workflow.add_node("compare_products", self.compare_products)
         
         # Define edges
-        workflow.set_entry_point("analyze_query")
+        # workflow.set_entry_point("analyze_query")
         
-        # Conditional routing based on query analysis
-        workflow.add_conditional_edges(
-            "analyze_query",
-            self.route_query,
-            {
-                "search": "search_products",
-                "recommendations": "get_recommendations",
-                "compare": "compare_products"
-            }
-        )
+        # # Conditional routing based on query analysis
+        # workflow.add_conditional_edges(
+        #     "analyze_query",
+        #     self.route_query,
+        #     {
+        #         "search": "search_products",
+        #         "recommendations": "get_recommendations",
+        #         "compare": "compare_products"
+        #     }
+        # )
         
-        # Continue to reasoning after search/recommendations/compare
-        workflow.add_edge("search_products", "reason_about_results")
-        workflow.add_edge("get_recommendations", "reason_about_results")
-        workflow.add_edge("compare_products", "reason_about_results")
+        # # Continue to reasoning after search/recommendations/compare
+        # workflow.add_edge("search_products", "reason_about_results")
+        # workflow.add_edge("get_recommendations", "reason_about_results")
+        # workflow.add_edge("compare_products", "reason_about_results")
         
-        # Generate final response
-        workflow.add_edge("reason_about_results", "generate_response")
-        workflow.add_edge("generate_response", END)
+        # # Generate final response
+        # workflow.add_edge("reason_about_results", "generate_response")
+        # workflow.add_edge("generate_response", END)
+        checkpointer = MemorySaver()
+
+        # Compile the graph into a LangChain Runnable application
+        return workflow.compile(checkpointer=checkpointer)
+    
+    def call_model(self, state: AgentState) -> AgentState:
+        logger.info(f"Calling model with state: {state.messages[-1].content}")
+        messages = state.messages
+        response = self.llm.invoke(messages)
+        # Only append the response if it's not already in the messages
+        if not messages or messages[-1] != response:
+            state.messages.append(response)
+        return state
+    
+    def should_continue(self, state: AgentState):
+        messages = state.messages
+        last_message = messages[-1]
+        # If the LLM makes a tool call, go to the "tools" node
+        if hasattr(last_message, 'tool_calls') and last_message.tool_calls:
+            return "tools"
+        # Otherwise, finish the workflow
+        return END
+    
+    def execute_tools(self, state: AgentState) -> AgentState:
+        """Execute tools and add results to messages."""
+        from langchain_core.messages import ToolMessage
         
-        return workflow.compile()
+        messages = state.messages
+        last_message = messages[-1]
+        
+        if hasattr(last_message, 'tool_calls') and last_message.tool_calls:
+            tool_results = []
+            for tool_call in last_message.tool_calls:
+                # Find the tool by name
+                tool_name = tool_call.get('name', '')
+                tool_args = tool_call.get('args', {})
+                
+                if tool_name == 'retrieve_information':
+                    # Execute our tool
+                    query = tool_args.get('query', '')
+                    try:
+                        search_results = self.db_manager.hybrid_search(query, limit=10)
+                        if search_results:
+                            formatted_results = []
+                            for result in search_results:
+                                formatted_results.append(f"Product: {result.get('name', 'Unknown')}\n"
+                                                       f"Description: {result.get('description', 'No description')}\n"
+                                                       f"Price: {result.get('price', 'Price not available')}\n")
+                            tool_result = "\n".join(formatted_results)
+                        else:
+                            tool_result = "No products found matching your query."
+                    except Exception as e:
+                        tool_result = f"Error searching for products: {str(e)}"
+                    
+                    # Create tool message
+                    tool_message = ToolMessage(
+                        content=tool_result,
+                        tool_call_id=tool_call.get('id', ''),
+                        name=tool_name
+                    )
+                    tool_results.append(tool_message)
+            
+            # Add tool results to messages
+            state.messages.extend(tool_results)
+        
+        return state
     
     def analyze_query(self, state: AgentState) -> AgentState:
         """Analyze the user query to determine intent and extract key information."""
@@ -337,32 +444,39 @@ class KingArthurBakingAgent:
     def chat(self, user_query: str) -> Dict[str, Any]:
         """Main chat interface."""
         try:
-            # Initialize state
+            # Initialize state with system message
             initial_state = AgentState(
                 user_query=user_query,
-                messages=[HumanMessage(content=user_query)]
+                messages=[
+                    SystemMessage(content=self.system_prompt),
+                    HumanMessage(content=user_query)
+                ]
             )
             
-            # Run the graph
-            final_state = self.graph.invoke(initial_state)
+            # Create configuration for the checkpointer
+            config = {"configurable": {"thread_id": f"chat_{datetime.now().strftime('%Y%m%d_%H%M%S')}"}}
+            
+            # Run the graph with proper configuration
+            final_state = self.graph.invoke(initial_state, config)
+            return final_state
             
             # Handle both AgentState objects and dictionaries
-            if isinstance(final_state, dict):
-                return {
-                    "response": final_state.get("response", "I apologize, but I couldn't generate a proper response."),
-                    "products": final_state.get("search_results", []),
-                    "analysis": final_state.get("analysis", ""),
-                    "tool_calls": final_state.get("tool_calls", []),
-                    "step": final_state.get("step", "unknown")
-                }
-            else:
-                return {
-                    "response": final_state.response,
-                    "products": final_state.search_results,
-                    "analysis": final_state.analysis,
-                    "tool_calls": final_state.tool_calls,
-                    "step": final_state.step
-                }
+            # if isinstance(final_state, dict):
+            #     return {
+            #         "response": final_state.get("response", "I apologize, but I couldn't generate a proper response."),
+            #         "products": final_state.get("search_results", []),
+            #         "analysis": final_state.get("analysis", ""),
+            #         "tool_calls": final_state.get("tool_calls", []),
+            #         "step": final_state.get("step", "unknown")
+            #     }
+            # else:
+            #     return {
+            #         "response": final_state.response,
+            #         "products": final_state.search_results,
+            #         "analysis": final_state.analysis,
+            #         "tool_calls": final_state.tool_calls,
+            #         "step": final_state.step
+            #     }
             
         except Exception as e:
             logger.error(f"Error in chat: {e}")
@@ -428,6 +542,8 @@ class KingArthurBakingAgent:
         except Exception as e:
             logger.error(f"Error getting stats: {e}")
             return {}
+
+
 
 def main():
     """Main function to test the agent."""
