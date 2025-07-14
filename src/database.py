@@ -24,9 +24,9 @@ class MongoDBManager:
 
 
     def connect(self):
-        """Connect to MongoDB Atlas with SSL configuration via connection string."""
+        """Connect to MongoDB Atlas with SSL configuration via connection string and connection pooling."""
         try:
-            # Strategy 1: Use connection string with SSL parameters
+            # Strategy 1: Use connection string with SSL parameters and connection pooling
             base_uri = settings.mongodb_uri
             
             # Add SSL parameters to connection string if not already present
@@ -34,9 +34,13 @@ class MongoDBManager:
                 "tls=true",
                 "tlsAllowInvalidCertificates=true", 
                 "tlsAllowInvalidHostnames=true",
-                "serverSelectionTimeoutMS=30000",
-                "socketTimeoutMS=30000",
-                "connectTimeoutMS=30000"
+                "serverSelectionTimeoutMS=5000",  # Reduced for faster failure detection
+                "socketTimeoutMS=10000",          # Reduced timeout
+                "connectTimeoutMS=5000",          # Reduced timeout
+                "maxPoolSize=50",                 # Increased pool size for concurrent users
+                "minPoolSize=5",                  # Minimum connections
+                "maxIdleTimeMS=30000",            # Connection idle timeout
+                "waitQueueTimeoutMS=5000"         # Queue timeout
             ]
             
             if '?' in base_uri:
@@ -48,7 +52,7 @@ class MongoDBManager:
             else:
                 ssl_uri = f"{base_uri}?{'&'.join(ssl_params)}"
             
-            logger.info("Attempting to connect to MongoDB with SSL parameters...")
+            logger.info("Attempting to connect to MongoDB with SSL and connection pooling...")
             self.client = MongoClient(ssl_uri)
             
             # Test the connection
@@ -56,10 +60,15 @@ class MongoDBManager:
             self.db = self.client[settings.mongodb_db_name]
             self.collection = self.db[settings.mongodb_collection_name]
             
-            logger.info("Successfully connected to MongoDB Atlas")
+            logger.info("Successfully connected to MongoDB Atlas with connection pooling")
             
-            # Create indexes
-            # self.create_indexes()
+            # Create indexes (only if collection is available)
+            if self.collection is not None:
+                try:
+                    # self.create_indexes()  # Commented out to avoid issues
+                    pass
+                except Exception as index_error:
+                    logger.warning(f"Index creation failed (non-critical): {index_error}")
             
         except Exception as e:
             logger.error(f"Failed to connect to MongoDB: {e}")

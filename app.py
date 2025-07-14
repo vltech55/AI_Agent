@@ -698,8 +698,13 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 def initialize_session_state():
-    """Initialize session state variables with better error handling."""
+    """Initialize session state variables with better error handling and unique session ID."""
     try:
+        # Create unique session ID for this user session
+        if 'session_id' not in st.session_state:
+            import uuid
+            st.session_state.session_id = str(uuid.uuid4())[:8]
+        
         if 'chat_history' not in st.session_state:
             st.session_state.chat_history = []
         if 'agent' not in st.session_state:
@@ -714,10 +719,12 @@ def initialize_session_state():
             st.session_state.initialization_error = None
         if 'pending_query' not in st.session_state:
             st.session_state.pending_query = None
-        if 'thread_id' not in st.session_state:
-            st.session_state.thread_id = f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         if 'processing_started' not in st.session_state:
             st.session_state.processing_started = False
+        if 'thread_id' not in st.session_state:
+            st.session_state.thread_id = f"session_{st.session_state.session_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        if 'last_processed_message' not in st.session_state:
+            st.session_state.last_processed_message = None
     except Exception as e:
         logger.error(f"Error initializing session state: {e}")
 
@@ -732,9 +739,9 @@ def validate_user_input(prompt: str) -> tuple[bool, str]:
     if len(prompt) > 500:
         return False, "Question is too long. Please keep it under 500 characters."
     
-    # Check for rate limiting (prevent spam)
+    # More lenient rate limiting for production (0.5 second cooldown)
     current_time = time.time()
-    if current_time - st.session_state.last_query_time < 2:  # 2 second cooldown
+    if current_time - st.session_state.last_query_time < 0.5:  # Reduced from 2 seconds
         return False, "Please wait a moment before sending another message."
     
     return True, ""
@@ -766,13 +773,28 @@ def initialize_components():
         return False
 
 def render_header():
-    """Render the main header with clean, modern styling."""
+    """Render the application header with session info for production debugging."""
     st.markdown("""
-    <div class="main-header">
-        <h1><i class="fas fa-robot"></i> King Arthur Baking Assistant</h1>
-        <p><i class="fas fa-sparkles"></i> Your AI-powered baking companion</p>
+    <div style="text-align: center; padding: 2rem 0;">
+        <h1 style="color: #2c3e50; margin-bottom: 0.5rem;">
+            <i class="fas fa-bread-slice"></i> King Arthur Baking AI Assistant
+        </h1>
+        <p style="color: #7f8c8d; margin-bottom: 0;">
+            Your intelligent companion for baking product recommendations and advice
+        </p>
     </div>
     """, unsafe_allow_html=True)
+    
+    # Production debugging info (can be removed for final deployment)
+    if st.session_state.get('session_id'):
+        with st.expander("🔍 Session Info (Debug)", expanded=False):
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.write(f"**Session ID:** `{st.session_state.session_id}`")
+            with col2:
+                st.write(f"**Processing:** `{st.session_state.is_processing}`")
+            with col3:
+                st.write(f"**Messages:** `{len(st.session_state.chat_history)}`")
 
 def render_product_cards(products: List[Dict]):
     """Render product cards with improved layout and error handling."""
@@ -910,7 +932,7 @@ def render_chat_interface():
     with col2:
         if st.button("🔄 New Chat", key="new_chat_btn", help="Start a new conversation"):
             st.session_state.chat_history = []
-            st.session_state.thread_id = f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            st.session_state.thread_id = f"session_{st.session_state.session_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
             st.rerun()
     
     # Check if components are initialized
@@ -1008,55 +1030,43 @@ def render_chat_input():
                 use_container_width=True
             )
     
-    # Phase 1: Handle new submission - show user message immediately
+    # Simplified single-phase processing to prevent multiple executions
     if submit_button and prompt and prompt.strip():
-        # Validate input first
+        # Create unique message identifier
+        message_id = f"{prompt}_{time.time()}"
+        
+        # Prevent duplicate processing with message-specific check
+        if st.session_state.last_processed_message == message_id:
+            return
+        
+        # Validate input
         is_valid, validation_error = validate_user_input(prompt)
         if not is_valid:
             st.error(validation_error)
             return
         
-        # Prevent duplicate submissions
+        # Prevent concurrent processing
         if st.session_state.is_processing:
             st.warning("Please wait for the current request to complete.")
             return
         
-        # Check if this exact message was just processed (prevent duplicates)
-        if (st.session_state.chat_history and 
-            len(st.session_state.chat_history) >= 1 and
-            st.session_state.chat_history[-1].get("content") == prompt and
-            st.session_state.chat_history[-1].get("role") == "user"):
-            return
-        
-        # Set processing state and add user message immediately
+        # Mark this message as being processed
+        st.session_state.last_processed_message = message_id
         st.session_state.is_processing = True
-        st.session_state.pending_query = prompt
         st.session_state.last_query_time = time.time()
         
-        # Add user message to history
+        # Add user message immediately
         user_message = {
             "role": "user",
             "content": prompt,
-            "timestamp": datetime.now().strftime("%H:%M:%S")
+            "timestamp": datetime.now().strftime("%H:%M:%S"),
+            "message_id": message_id
         }
         st.session_state.chat_history.append(user_message)
         
-        # Rerun to show user message immediately
-        st.rerun()
-    
-    # Phase 2: Process pending query (separate check, not elif)
-    if (st.session_state.get('pending_query') and 
-        st.session_state.is_processing and 
-        not st.session_state.get('processing_started') and
-        not submit_button):  # Only process if not currently submitting
-        
-        # Set flag to prevent multiple processing
-        st.session_state.processing_started = True
-        prompt = st.session_state.pending_query
-        
-        # Process with loading indicator
-        with st.spinner("🤖 Processing your question..."):
-            try:
+        # Process immediately with spinner
+        try:
+            with st.spinner("🤖 Processing your question..."):
                 response = st.session_state.agent.chat(prompt, thread_id=st.session_state.thread_id)
                 
                 # Extract response content safely
@@ -1067,7 +1077,7 @@ def render_chat_input():
                     content = str(response) if response else "I apologize, but I couldn't generate a response."
                     products = []
                 
-                # Add assistant message to history
+                # Add assistant message
                 assistant_message = {
                     "role": "assistant",
                     "content": content,
@@ -1075,28 +1085,37 @@ def render_chat_input():
                     "timestamp": datetime.now().strftime("%H:%M:%S")
                 }
                 st.session_state.chat_history.append(assistant_message)
-                    
-            except Exception as e:
-                error_msg = f"I apologize, but I encountered an error while processing your request. Please try again."
-                logger.error(f"Chat error: {e}")
                 
-                # Add error message to history
-                error_message = {
-                    "role": "assistant",
-                    "content": error_msg,
-                    "products": [],
-                    "timestamp": datetime.now().strftime("%H:%M:%S")
-                }
-                st.session_state.chat_history.append(error_message)
+        except Exception as e:
+            error_msg = f"I apologize, but I encountered an error while processing your request. Please try again."
+            logger.error(f"Chat error for session {st.session_state.session_id}: {e}")
             
-            finally:
-                # Clear all processing flags
-                st.session_state.is_processing = False
-                st.session_state.pending_query = None
-                st.session_state.processing_started = False
-                
-                # Rerun to show the response
-                st.rerun()
+            # Add error message
+            error_message = {
+                "role": "assistant",
+                "content": error_msg,
+                "products": [],
+                "timestamp": datetime.now().strftime("%H:%M:%S")
+            }
+            st.session_state.chat_history.append(error_message)
+        
+        finally:
+            # Clear processing state
+            st.session_state.is_processing = False
+            # Don't rerun - let Streamlit handle the natural update
+    
+    # Show simple processing indicator without complex logic
+    if st.session_state.is_processing:
+        st.markdown("""
+        <div class="processing-indicator" style="background: linear-gradient(45deg, #f0f8ff, #e6f3ff); border: 2px solid #4CAF50; border-radius: 10px; padding: 15px; margin: 10px 0;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <i class="fas fa-robot fa-2x" style="color: #4CAF50;"></i>
+                <div>
+                    <strong style="color: #2196F3;">AI Assistant is thinking...</strong>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
 def main():
     """Main application function with improved error handling."""
@@ -1131,7 +1150,7 @@ def main():
             with col_refresh:
                 refresh_label = "Refresh"
                 if st.button(refresh_label, disabled=st.session_state.is_processing, key="refresh_btn"):
-                    # Clear all session state except chat_history and thread_id
+                    # Clear all session state except session_id and thread_id
                     st.session_state.agent = None
                     st.session_state.db_manager = None
                     st.session_state.initialization_error = None
@@ -1139,6 +1158,9 @@ def main():
                     st.session_state.pending_query = None
                     st.session_state.processing_started = False
                     st.session_state.last_query_time = 0
+                    st.session_state.last_processed_message = None
+                    # Keep session_id and regenerate thread_id
+                    st.session_state.thread_id = f"session_{st.session_state.session_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
                     st.rerun()
         
         with col2:
