@@ -33,31 +33,31 @@ def apply_professional_styles():
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
         }
 
-        /* Modern Facebook-like Design System */
+        /* Modern Light Design System - Simplified for HF Spaces */
         :root {
-            --primary: #1877f2;
-            --primary-hover: #166fe5;
-            --primary-light: #e7f3ff;
-            --secondary: #42b883;
-            --accent: #ff6b6b;
-            --background: #f0f2f5;
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --primary-light: #eff6ff;
+            --secondary: #059669;
+            --accent: #dc2626;
+            --background: #f8fafc;
             --surface: #ffffff;
             --surface-elevated: #ffffff;
-            --border: #e4e6ea;
-            --border-light: #f0f2f5;
-            --text-primary: #1c1e21;
-            --text-secondary: #65676b;
-            --text-tertiary: #8a8d91;
-            --success: #42b883;
-            --warning: #ff9500;
-            --error: #fa3e3e;
+            --border: #e2e8f0;
+            --border-light: #f1f5f9;
+            --text-primary: #0f172a;
+            --text-secondary: #475569;
+            --text-tertiary: #64748b;
+            --success: #059669;
+            --warning: #d97706;
+            --error: #dc2626;
             --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
-            --shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-            --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.15);
-            --radius-sm: 6px;
-            --radius: 8px;
-            --radius-lg: 12px;
-            --radius-xl: 16px;
+            --shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            --shadow-lg: 0 4px 6px rgba(0, 0, 0, 0.1);
+            --radius-sm: 4px;
+            --radius: 6px;
+            --radius-lg: 8px;
+            --radius-xl: 12px;
         }
 
         /* Base layout - Enhanced for Hugging Face Spaces */
@@ -73,41 +73,74 @@ def apply_professional_styles():
             margin: 0 auto;
         }
 
-        /* Force background on all Streamlit containers */
+        /* AGGRESSIVE Background Enforcement for HF Spaces */
+        * {
+            background-color: #f8fafc !important;
+        }
+
+        html {
+            background: #f8fafc !important;
+            background-color: #f8fafc !important;
+        }
+
+        body {
+            background: #f8fafc !important;
+            background-color: #f8fafc !important;
+        }
+
         .stApp {
-            background: var(--background) !important;
-            background-color: #f0f2f5 !important;
+            background: #f8fafc !important;
+            background-color: #f8fafc !important;
         }
 
         .stApp > div {
-            background: var(--background) !important;
-            background-color: #f0f2f5 !important;
+            background: #f8fafc !important;
+            background-color: #f8fafc !important;
         }
 
-        /* Ensure background covers full viewport */
-        html, body, [data-testid="stAppViewContainer"] {
-            background: var(--background) !important;
-            background-color: #f0f2f5 !important;
+        [data-testid="stAppViewContainer"] {
+            background: #f8fafc !important;
+            background-color: #f8fafc !important;
         }
 
-        /* Additional background enforcement for HF Spaces */
-        div[data-testid="stAppViewContainer"] > .main {
-            background: var(--background) !important;
-            background-color: #f0f2f5 !important;
+        [data-testid="stAppViewContainer"] > .main {
+            background: #f8fafc !important;
+            background-color: #f8fafc !important;
             min-height: 100vh !important;
         }
 
-        /* Modern header */
+        .main {
+            background: #f8fafc !important;
+            background-color: #f8fafc !important;
+        }
+
+        .main .block-container {
+            background: #f8fafc !important;
+            background-color: #f8fafc !important;
+        }
+
+        /* Override any dark themes */
+        [data-theme="dark"] {
+            background: #f8fafc !important;
+            background-color: #f8fafc !important;
+        }
+
+        /* Force light background on all containers */
+        div, section, article, header, footer, main {
+            background-color: #f8fafc !important;
+        }
+
+        /* Modern header with explicit colors */
         .app-header {
-            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
-            color: white;
-            padding: 2.5rem 2rem;
-            border-radius: var(--radius-xl);
-            text-align: center;
-            margin-bottom: 2rem;
-            box-shadow: var(--shadow-lg);
-            position: relative;
-            overflow: hidden;
+            background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%) !important;
+            color: white !important;
+            padding: 2.5rem 2rem !important;
+            border-radius: 12px !important;
+            text-align: center !important;
+            margin-bottom: 2rem !important;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1) !important;
+            position: relative !important;
+            overflow: hidden !important;
         }
 
         .app-header::before {
@@ -138,24 +171,24 @@ def apply_professional_styles():
             z-index: 1;
         }
 
-        /* Modern chat messages */
+        /* Modern chat messages with explicit colors */
         .stChatMessage {
-            background: var(--surface) !important;
-            border: 1px solid var(--border) !important;
-            border-radius: var(--radius-lg) !important;
+            background: #ffffff !important;
+            border: 1px solid #e2e8f0 !important;
+            border-radius: 8px !important;
             margin-bottom: 1.5rem !important;
-            box-shadow: var(--shadow) !important;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1) !important;
             transition: all 0.2s ease !important;
         }
 
         .stChatMessage:hover {
-            box-shadow: var(--shadow-lg) !important;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1) !important;
             transform: translateY(-1px) !important;
         }
 
-        /* User messages with gradient */
+        /* User messages with blue gradient */
         div[data-testid="stChatMessage"]:has(div[data-testid="stAvatar-user"]) {
-            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%) !important;
+            background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%) !important;
             color: white !important;
             border: none !important;
         }
@@ -164,10 +197,10 @@ def apply_professional_styles():
             color: white !important;
         }
 
-        /* Assistant messages */
+        /* Assistant messages with white background */
         div[data-testid="stChatMessage"]:has(div[data-testid="stAvatar-assistant"]) {
-            background: var(--surface) !important;
-            border: 1px solid var(--border) !important;
+            background: #ffffff !important;
+            border: 1px solid #e2e8f0 !important;
         }
 
         /* Horizontal image layout in chat messages */
@@ -212,15 +245,19 @@ def apply_professional_styles():
             box-shadow: 0 0 0 3px rgba(24, 119, 242, 0.1) !important;
         }
 
-        /* Modern sidebar */
+        /* Modern sidebar with white background */
         .stSidebar {
-            background: var(--surface) !important;
-            border-right: 1px solid var(--border) !important;
+            background: #ffffff !important;
+            border-right: 1px solid #e2e8f0 !important;
             padding: 1rem !important;
         }
 
         .stSidebar > div {
-            background: transparent !important;
+            background: #ffffff !important;
+        }
+
+        .stSidebar * {
+            background-color: transparent !important;
         }
 
         /* Simple clean sidebar sections */
@@ -353,33 +390,33 @@ def apply_professional_styles():
             letter-spacing: 0.3px;
         }
 
-        /* Enhanced product cards */
+        /* Enhanced product cards with explicit colors */
         .product-card {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: var(--radius-lg);
-            padding: 1.5rem;
-            margin: 1rem 0;
-            box-shadow: var(--shadow);
-            transition: all 0.3s ease;
-            position: relative;
-            overflow: hidden;
+            background: #ffffff !important;
+            border: 1px solid #e2e8f0 !important;
+            border-radius: 8px !important;
+            padding: 1.5rem !important;
+            margin: 1rem 0 !important;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1) !important;
+            transition: all 0.3s ease !important;
+            position: relative !important;
+            overflow: hidden !important;
         }
 
         .product-card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 3px;
-            background: linear-gradient(90deg, var(--primary), var(--secondary));
+            content: '' !important;
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            height: 3px !important;
+            background: linear-gradient(90deg, #2563eb, #059669) !important;
         }
 
         .product-card:hover {
-            transform: translateY(-4px);
-            box-shadow: var(--shadow-lg);
-            border-color: var(--primary);
+            transform: translateY(-4px) !important;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1) !important;
+            border-color: #2563eb !important;
         }
 
         .product-title {

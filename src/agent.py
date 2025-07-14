@@ -154,6 +154,60 @@ class KingArthurBakingAgent:
         
         return retrieve_information
     
+    def generate_response(self, state: AgentState) -> AgentState:
+        """Generate the final response to the user."""
+        try:
+            # Prepare product details for response
+            product_details = []
+            for product in state.search_results:
+                details = {
+                    "name": product.get("name", "Unknown"),
+                    "description": product.get("description", ""),
+                    "price": product.get("price", ""),
+                    "ingredients": product.get("ingredients", ""),
+                    "instructions": product.get("instructions", ""),
+                    "features": product.get("features", []),
+                    "url": product.get("url", "")
+                }
+                product_details.append(details)
+            
+            response_prompt = ChatPromptTemplate.from_messages([
+                SystemMessage(content="""You are a friendly and knowledgeable baking assistant for King Arthur Baking.
+                
+                Generate a helpful response that:
+                1. Directly answers the user's question
+                2. Provides specific product recommendations with details
+                3. Includes practical baking tips when relevant
+                4. Mentions prices and key features
+                5. Suggests where to find more information
+                
+                Format your response in a conversational, helpful tone.
+                Include specific product names, prices, and key details.
+                """),
+                HumanMessage(content=f"""
+                User Query: {state.user_query}
+                
+                Analysis: {state.analysis}
+                
+                Products Found:
+                {json.dumps(product_details, indent=2)}
+                
+                Generate a helpful response:
+                """)
+            ])
+            
+            response = self.llm.invoke(response_prompt.format_messages())
+            state.response = response.content
+            state.step = "completed"
+            
+            logger.info("Generated final response")
+            return state
+            
+        except Exception as e:
+            logger.error(f"Error generating response: {e}")
+            state.response = "I apologize, but I encountered an error while generating a response. Please try again."
+            return state
+    
     def bson_object_id_to_str(self, doc):
         """Convert BSON ObjectId and datetime objects to strings for JSON serialization."""
         import datetime
