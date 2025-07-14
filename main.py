@@ -80,7 +80,6 @@ def setup_database():
     
     try:
         db_manager = MongoDBManager()
-        return True
         
         # Load data from JSON file
         inserted_count = db_manager.load_from_json()

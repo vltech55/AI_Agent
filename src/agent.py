@@ -13,6 +13,7 @@ from langchain_core.output_parsers import StrOutputParser
 from pydantic import BaseModel, Field
 import re
 from datetime import datetime
+from bson import ObjectId
 
 from .database import MongoDBManager
 # Removed AtlasVectorSearchService - using database search methods directly
@@ -29,9 +30,74 @@ logger = logging.getLogger(__name__)
 prompt = """You are a smart AI Assistant for King Arthur Baking.
 You are allowed to make multiple calls (either together or in sequence).
 Only look up information when you are sure of what you want.
+There are two tools you can use to get information:
+1. retrieve_information: This tool performs semantic/hybrid search over product descriptions, ingredients, and details. Use this for natural language queries like "chocolate cake mix" or "gluten-free options".
+2. query_information: This tool accepts natural language queries that get converted to MongoDB queries. Use this for specific queries like "most expensive products" or "products under $10". Do NOT pass MongoDB syntax directly - use natural language.
+
 If you need to look up some information before asking a follow up question, you are allowed to do that!
 """
 
+mongo_schema = """"""
+example_document = """"""
+custom_fields_description = """Here's an explanation of each field:
+
+1. SKU (Stock Keeping Unit): 213793
+
+A unique identifier for the product used for inventory management.
+2. UPC (Universal Product Code): 071012000630
+
+A barcode symbol that's widely used to identify products in retail.
+3. Maximum Purchase: 12 units
+
+The maximum quantity of the product that can be purchased at one time.
+4. swym-disabled: false
+
+Indicates whether the product is impacted by certain external services, possibly related to wishlist services (Swym).
+5. _Promo_Exclusion: No
+
+Indicates if the product is excluded from promotions.
+6. Various badge fields: (e.g., _badge_glutenfree, _badge_kosherpareve)
+
+These fields indicate different certifications or attributes, such as whether the product is gluten-free, kosher, organic, made in the USA, etc. All are marked "No," meaning these attributes do not apply to the product.
+7. _Parent_Category: Mixes
+
+The main category to which this product belongs.
+8. _Child_Category: Cookies
+
+A subcategory within the parent category.
+9. _Online_Exclusive: 0
+
+Indicates whether the product is exclusive to online sales. A value of 0 suggests it's not online exclusive.
+10. _sale_label, _clearance_label: No
+
+Indicates if the product is on sale or clearance. Both are set to "No."
+11. _free_ship_label, _ground_ship_label: No
+
+Indicates if the product qualifies for free or ground shipping. Both labels are set to "No."
+12. _new_label: Yes
+
+Shows that the product is considered new.
+13. _label_path, _package_path:
+
+Paths to the product’s label and packaging files, which may be used for display purposes.
+14. _type_label, _flavor_label, _category_label:
+
+Descriptions of the product type, flavor (Lemon), and relevant categories (Dessert, Snack).
+15. _review_avg_score: 4.7
+
+The average customer review score, which is quite high.
+16. _review_count: 14
+
+The number of reviews the product has received.
+17. _Special_Savings, _special_savings_label: No
+
+Indicates the absence of any special savings associated with the product."""
+
+with open('src/schema-king_arthur_baking_db-mixes-mongoDBJSON.json', 'r') as file:
+    mongo_schema = json.load(file)
+
+with open('src/document-king_arthur_baking_db-minxes.json', 'r') as file:
+    example_document = json.load(file)
 class AgentState(BaseModel):
     """State for the AI agent."""
     messages: List[Any] = Field(default_factory=list)
@@ -54,7 +120,7 @@ class KingArthurBakingAgent:
         )
         self.db_manager = MongoDBManager()
         # Create the tool with access to db_manager
-        self.tools = [self._create_retrieve_tool()]
+        self.tools = [self._create_retrieve_tool(), self._create_mongo_query_tool()]
         self.llm = self.llm.bind_tools(self.tools)
         # Use database search methods directly
         self.graph = self.create_graph()
@@ -65,14 +131,16 @@ class KingArthurBakingAgent:
         def retrieve_information(query: str) -> str:
             """Hybrid search for information from Atlas."""
             try:
+                print(f"Retrieving information for {query}")
                 search_results = self.db_manager.hybrid_search(query, limit=10)
                 if search_results:
                     # Format results for the LLM
                     formatted_results = []
                     for result in search_results:
-                        formatted_results.append(f"Product: {result.get('name', 'Unknown')}\n"
-                                               f"Description: {result.get('description', 'No description')}\n"
-                                               f"Price: {result.get('price', 'Price not available')}\n")
+                        formatted_results.append(json.dumps(self.bson_object_id_to_str(result), indent=2))
+                        # formatted_results.append(f"Product: {result.get('name', 'Unknown')}\n"
+                        #                        f"Description: {result.get('description', 'No description')}\n"
+                        #                        f"Price: {result.get('price', 'Price not available')}\n")
                     return "\n".join(formatted_results)
                 else:
                     return "No products found matching your query."
@@ -80,6 +148,154 @@ class KingArthurBakingAgent:
                 return f"Error searching for products: {str(e)}"
         
         return retrieve_information
+    
+    def bson_object_id_to_str(self, doc):
+        """Convert BSON ObjectId and datetime objects to strings for JSON serialization."""
+        import datetime
+        from bson import ObjectId
+
+        extracted_doc = {}
+
+        extract_fields = ["name", "plain_text_description", "price", "sales_info", "review_summary", "ingredients", "details", "Contains"]
+        for field in extract_fields:
+            if field in doc:
+                extracted_doc[field] = str(doc[field])
+
+        if isinstance(extracted_doc, dict):
+            for key, value in extracted_doc.items():
+                if isinstance(value, ObjectId):
+                    extracted_doc[key] = str(value)
+                elif isinstance(value, datetime.datetime):
+                    extracted_doc[key] = value.isoformat()
+                elif isinstance(value, dict):
+                    extracted_doc[key] = self.bson_object_id_to_str(value)
+                elif isinstance(value, list):
+                    extracted_doc[key] = [self.bson_object_id_to_str(item) if isinstance(item, (dict, ObjectId, datetime.datetime)) 
+                               else str(item) if isinstance(item, ObjectId) 
+                               else item.isoformat() if isinstance(item, datetime.datetime)
+                               else item for item in value]
+        elif isinstance(extracted_doc, ObjectId):
+            return str(extracted_doc)
+        elif isinstance(extracted_doc, datetime.datetime):
+            return extracted_doc.isoformat()
+        
+        return extracted_doc
+
+    def _create_mongo_query_tool(self):
+        """Create a tool for retrieving information from the database."""
+        @tool
+        def query_information(query: str) -> str:
+            """Convert natural language queries to MongoDB queries and execute them.
+            
+            Args:
+                query (str): Natural language query like 'most expensive products', 'products under $10', 'highest rated mixes'
+                
+            Note: Pass natural language queries, NOT MongoDB syntax. Examples:
+            - 'most expensive products' 
+            - 'products under $20'
+            - 'highest rated chocolate mixes'
+            """
+            try:
+                # Handle both string and dict inputs for backward compatibility
+                if isinstance(query, dict):
+                    # If a dict is passed, it might be a direct MongoDB query
+                    print(f"WARNING: Received dict instead of string query: {query}")
+                    # Try to convert common dict patterns to natural language
+                    if 'price' in query and '$exists' in str(query):
+                        query = "products with price information"
+                    elif not query:  # empty dict
+                        query = "all products"
+                    else:
+                        query = "products matching criteria"
+                    print(f"Converted to natural language query: {query}")
+                
+                # Validate the query parameter
+                if not query or not isinstance(query, str) or not query.strip():
+                    return "Error: Empty or invalid query provided. Please provide a valid search query."
+                
+                query = query.strip()
+                print(f"Generating MongoDB query...for '{query}'")
+                
+                query_prompt = ChatPromptTemplate.from_messages([
+                    SystemMessage(content=f"""
+                    You are an MongoDB expert that analyzes user queries about products and generates MongoDB pipeline.
+                    
+                    Analyze the user query and generate a MongoDB aggregation pipeline for search. Here is the MongoDB Collection schema:
+                    {mongo_schema}
+
+                    It is scraped data from https://shop.kingarthurbaking.com/mixes.
+
+                    And here is the custom fields description:
+                    {custom_fields_description}                    
+                    
+                    And here is the example document:
+                    {example_document}
+
+                    example pipeline:
+                    [
+                        {{"$match": {{"name": "chocolate cake mix"}}}},
+                        {{"$limit": 10}}
+                    ]
+
+                    You have to understand the mongodb schema and the example document.
+                    Understand what user is looking for and generate the pipeline accordingly.                    
+                    Generate a valid MongoDB aggregation pipeline (as JSON array) that can be used with collection.aggregate(pipeline).
+                    Collection is the pymongo collection. The package is pymongo>=4.6.1.
+                    Return ONLY the JSON array, no explanations.
+                    """),
+                    HumanMessage(content=f"User query: {query}")
+                ])
+                
+                response = self.llm.invoke(query_prompt.format_messages())
+                print("----------------------Query Generated---------------------")
+                print(f"Generated MongoDB query: {response.content}")
+                
+                # Parse the response as JSON
+                import json
+                response_content = str(response.content) if hasattr(response, 'content') else str(response)
+                
+                # Try to extract JSON from the response
+                try:
+                    # Try to parse directly
+                    mongo_query = json.loads(response_content)
+                except json.JSONDecodeError:
+                    # Try to extract JSON from markdown code blocks
+                    import re
+                    json_match = re.search(r'```(?:json)?\s*(.*?)\s*```', response_content, re.DOTALL)
+                    if json_match:
+                        mongo_query = json.loads(json_match.group(1))
+                    else:
+                        # Try to find JSON array in the text
+                        json_match = re.search(r'\[.*\]', response_content, re.DOTALL)
+                        if json_match:
+                            mongo_query = json.loads(json_match.group(0))
+                        else:
+                            raise ValueError("Could not extract valid JSON from response")
+                
+                print('---------------------------------mongo_query---------------------------------', mongo_query)
+                
+                # Execute the MongoDB query using the database manager
+                if self.db_manager.collection is not None:
+                    search_results = list(self.db_manager.collection.aggregate(mongo_query))
+                else:
+                    search_results = []
+                
+                if search_results:
+                    # Format results for the LLM
+                    formatted_results = []
+                    for result in search_results:
+                        
+                        formatted_results.append(json.dumps(self.bson_object_id_to_str(result), indent=2))
+                        # formatted_results.append(f"Product: {result.get('name', 'Unknown')}\n"
+                        #                        f"Description: {result.get('description', 'No description')}\n"
+                        #                        f"Price: {result.get('price', 'Price not available')}\n")
+                    return "\n".join(formatted_results)
+                else:
+                    return "No products found matching your query."
+            except Exception as e:
+                return f"Error searching for products: {str(e)}"
+        
+        return query_information
         
     def create_graph(self):
         """Create the LangGraph workflow."""
@@ -91,37 +307,7 @@ class KingArthurBakingAgent:
         workflow.add_edge(START, "agent")
         workflow.add_conditional_edges("agent", self.should_continue)  # Decision after the "agent" node
         workflow.add_edge("tools", "agent")
-
-        # Define nodes
-        # workflow.add_node("analyze_query", self.analyze_query)h
-        # workflow.add_node("search_products", self.search_products)
-        # workflow.add_node("reason_about_results", self.reason_about_results)
-        # workflow.add_node("generate_response", self.generate_response)
-        # workflow.add_node("get_recommendations", self.get_recommendations)
-        # workflow.add_node("compare_products", self.compare_products)
         
-        # Define edges
-        # workflow.set_entry_point("analyze_query")
-        
-        # # Conditional routing based on query analysis
-        # workflow.add_conditional_edges(
-        #     "analyze_query",
-        #     self.route_query,
-        #     {
-        #         "search": "search_products",
-        #         "recommendations": "get_recommendations",
-        #         "compare": "compare_products"
-        #     }
-        # )
-        
-        # # Continue to reasoning after search/recommendations/compare
-        # workflow.add_edge("search_products", "reason_about_results")
-        # workflow.add_edge("get_recommendations", "reason_about_results")
-        # workflow.add_edge("compare_products", "reason_about_results")
-        
-        # # Generate final response
-        # workflow.add_edge("reason_about_results", "generate_response")
-        # workflow.add_edge("generate_response", END)
         checkpointer = MemorySaver()
 
         # Compile the graph into a LangChain Runnable application
@@ -159,117 +345,53 @@ class KingArthurBakingAgent:
                 tool_name = tool_call.get('name', '')
                 tool_args = tool_call.get('args', {})
                 
-                if tool_name == 'retrieve_information':
-                    # Execute our tool
-                    query = tool_args.get('query', '')
-                    try:
-                        search_results = self.db_manager.hybrid_search(query, limit=10)
-                        if search_results:
-                            formatted_results = []
-                            for result in search_results:
-                                formatted_results.append(f"Product: {result.get('name', 'Unknown')}\n"
-                                                       f"Description: {result.get('description', 'No description')}\n"
-                                                       f"Price: {result.get('price', 'Price not available')}\n")
-                            tool_result = "\n".join(formatted_results)
-                        else:
-                            tool_result = "No products found matching your query."
-                    except Exception as e:
-                        tool_result = f"Error searching for products: {str(e)}"
-                    
-                    # Create tool message
-                    tool_message = ToolMessage(
-                        content=tool_result,
-                        tool_call_id=tool_call.get('id', ''),
-                        name=tool_name
-                    )
-                    tool_results.append(tool_message)
+                # Add debugging for tool calls
+                print(f"DEBUG: Executing tool '{tool_name}' with args: {tool_args}")
+                
+                # Validate tool arguments before execution
+                if tool_name in ['query_information', 'retrieve_information']:
+                    query_param = tool_args.get('query', '')
+                    if not query_param or not isinstance(query_param, str) or not query_param.strip():
+                        print(f"WARNING: Empty or invalid query parameter for tool '{tool_name}': {query_param}")
+                        tool_result = f"Error: Tool '{tool_name}' received empty or invalid query parameter."
+                        # Create tool message
+                        tool_message = ToolMessage(
+                            content=tool_result,
+                            tool_call_id=tool_call.get('id', ''),
+                            name=tool_name
+                        )
+                        tool_results.append(tool_message)
+                        continue
+                
+                # Find and execute the appropriate tool
+                tool_result = None
+                for tool in self.tools:
+                    if tool.name == tool_name:
+                        try:
+                            # Call the tool using invoke method
+                            tool_result = tool.invoke(tool_args)
+                            break
+                        except Exception as e:
+                            print(f"ERROR: Tool execution failed for '{tool_name}': {str(e)}")
+                            tool_result = f"Error executing {tool_name}: {str(e)}"
+                            break
+                
+                if tool_result is None:
+                    tool_result = f"Tool '{tool_name}' not found"
+                
+                # Create tool message
+                tool_message = ToolMessage(
+                    content=tool_result,
+                    tool_call_id=tool_call.get('id', ''),
+                    name=tool_name
+                )
+                tool_results.append(tool_message)
             
             # Add tool results to messages
             state.messages.extend(tool_results)
         
         return state
-    
-    def analyze_query(self, state: AgentState) -> AgentState:
-        """Analyze the user query to determine intent and extract key information."""
-        try:
-            analysis_prompt = ChatPromptTemplate.from_messages([
-                SystemMessage(content="""You are an AI assistant that analyzes user queries about baking mixes.
-                
-                Analyze the user query and determine:
-                1. Intent: search, recommendations, compare, or general
-                2. Keywords: Extract relevant baking terms, ingredients, or product types
-                3. Specific requirements: dietary restrictions, difficulty level, etc.
-                4. Context: Any additional context or preferences
-                
-                Format your response as JSON with these fields:
-                - intent: one of [search, recommendations, compare, general]
-                - keywords: list of relevant terms
-                - requirements: list of specific requirements
-                - context: any additional context
-                """),
-                HumanMessage(content=f"User query: {state.user_query}")
-            ])
-            
-            response = self.llm.invoke(analysis_prompt.format_messages())
-            
-            # Try to parse as JSON, fallback to simple analysis
-            try:
-                analysis = json.loads(response.content)
-            except:
-                analysis = {
-                    "intent": "search",
-                    "keywords": re.findall(r'\b\w+\b', state.user_query.lower()),
-                    "requirements": [],
-                    "context": ""
-                }
-            
-            state.analysis = response.content
-            state.context = analysis
-            state.step = "analyzed"
-            
-            logger.info(f"Query analyzed - Intent: {analysis.get('intent', 'unknown')}")
-            return state
-            
-        except Exception as e:
-            logger.error(f"Error analyzing query: {e}")
-            state.context = {"intent": "search", "keywords": [], "requirements": [], "context": ""}
-            return state
-    
-    def route_query(self, state: AgentState) -> str:
-        """Route the query based on analysis."""
-        intent = state.context.get("intent", "search")
-        
-        if intent == "recommendations":
-            return "recommendations"
-        elif intent == "compare":
-            return "compare"
-        else:
-            return "search"
-    
-    def search_products(self, state: AgentState) -> AgentState:
-        """Search for products based on the query."""
-        try:
-            # Use hybrid search for best results
-            search_results = self.db_manager.hybrid_search(state.user_query, limit=10)
-            
-            # If no results, try with keywords
-            if not search_results:
-                keywords = " ".join(state.context.get("keywords", []))
-                if keywords:
-                    search_results = self.db_manager.hybrid_search(keywords, limit=10)
-            
-            state.search_results = search_results
-            state.tool_calls.append("hybrid_search")
-            state.step = "searched"
-            
-            logger.info(f"Found {len(search_results)} products")
-            return state
-            
-        except Exception as e:
-            logger.error(f"Error searching products: {e}")
-            state.search_results = []
-            return state
-    
+
     def get_recommendations(self, state: AgentState) -> AgentState:
         """Get product recommendations based on preferences."""
         try:
@@ -291,102 +413,7 @@ class KingArthurBakingAgent:
             logger.error(f"Error getting recommendations: {e}")
             state.search_results = []
             return state
-    
-    def compare_products(self, state: AgentState) -> AgentState:
-        """Compare products based on the query."""
-        try:
-            # Extract product names or IDs from query
-            query_lower = state.user_query.lower()
-            
-            # First, search for products mentioned in the query
-            products_to_compare = self.db_manager.hybrid_search(state.user_query, limit=5)
-            
-            # If we have products, get similar ones for comparison
-            if products_to_compare:
-                comparison_results = []
-                for product in products_to_compare[:3]:  # Compare top 3
-                    similar = self.db_manager.find_similar_products(
-                        str(product['_id']), limit=2
-                    )
-                    comparison_results.extend([product] + similar)
-                
-                # Remove duplicates
-                seen_ids = set()
-                unique_results = []
-                for product in comparison_results:
-                    product_id = str(product['_id'])
-                    if product_id not in seen_ids:
-                        seen_ids.add(product_id)
-                        unique_results.append(product)
-                
-                state.search_results = unique_results[:6]  # Limit to 6 for comparison
-            else:
-                state.search_results = []
-            
-            state.tool_calls.append("compare_products")
-            state.step = "compared"
-            
-            logger.info(f"Prepared {len(state.search_results)} products for comparison")
-            return state
-            
-        except Exception as e:
-            logger.error(f"Error comparing products: {e}")
-            state.search_results = []
-            return state
-    
-    def reason_about_results(self, state: AgentState) -> AgentState:
-        """Reason about the search results and provide insights."""
-        try:
-            if not state.search_results:
-                state.analysis = "No relevant products found for the query."
-                return state
-            
-            # Prepare context for reasoning
-            products_summary = []
-            for product in state.search_results:
-                summary = {
-                    "name": product.get("name", "Unknown"),
-                    "description": product.get("description", "")[:200] + "..." if len(product.get("description", "")) > 200 else product.get("description", ""),
-                    "price": product.get("price", ""),
-                    "ingredients": product.get("ingredients", "")[:100] + "..." if len(product.get("ingredients", "")) > 100 else product.get("ingredients", ""),
-                    "features": product.get("features", [])[:3]  # Top 3 features
-                }
-                products_summary.append(summary)
-            
-            reasoning_prompt = ChatPromptTemplate.from_messages([
-                SystemMessage(content="""You are an expert baking assistant. Analyze the search results and provide insights.
-                
-                Based on the user query and the found products, provide:
-                1. How well the products match the user's needs
-                2. Key differences between products
-                3. Recommendations based on different use cases
-                4. Any notable ingredients or features
-                5. Suggestions for the user
-                
-                Be helpful, informative, and focus on practical baking advice.
-                """),
-                HumanMessage(content=f"""
-                User Query: {state.user_query}
-                
-                Found Products:
-                {json.dumps(products_summary, indent=2)}
-                
-                Provide your analysis and insights:
-                """)
-            ])
-            
-            response = self.llm.invoke(reasoning_prompt.format_messages())
-            state.analysis = response.content
-            state.step = "reasoned"
-            
-            logger.info("Completed reasoning about results")
-            return state
-            
-        except Exception as e:
-            logger.error(f"Error reasoning about results: {e}")
-            state.analysis = "Error analyzing the search results."
-            return state
-    
+
     def generate_response(self, state: AgentState) -> AgentState:
         """Generate the final response to the user."""
         try:
@@ -441,42 +468,96 @@ class KingArthurBakingAgent:
             state.response = "I apologize, but I encountered an error while generating a response. Please try again."
             return state
     
-    def chat(self, user_query: str) -> Dict[str, Any]:
+    def chat(self, user_query: str, thread_id: Optional[str] = None) -> Dict[str, Any]:
         """Main chat interface."""
         try:
-            # Initialize state with system message
-            initial_state = AgentState(
-                user_query=user_query,
-                messages=[
-                    SystemMessage(content=self.system_prompt),
-                    HumanMessage(content=user_query)
-                ]
-            )
+            # Use provided thread_id or create a new one
+            if thread_id is None:
+                thread_id = f"chat_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
             
             # Create configuration for the checkpointer
-            config = {"configurable": {"thread_id": f"chat_{datetime.now().strftime('%Y%m%d_%H%M%S')}"}}
+            config = {"configurable": {"thread_id": thread_id}}
+            
+            # Try to get existing state from checkpointer
+            try:
+                # Get the current state from the checkpointer
+                current_state = self.graph.get_state(config)
+                if current_state and current_state.values.get("messages"):
+                    # Add new user message to existing conversation
+                    existing_messages = current_state.values["messages"]
+                    new_message = HumanMessage(content=user_query)
+                    existing_messages.append(new_message)
+                    
+                    initial_state = AgentState(
+                        user_query=user_query,
+                        messages=existing_messages,
+                        search_results=current_state.values.get("search_results", []),
+                        analysis=current_state.values.get("analysis", ""),
+                        response=current_state.values.get("response", ""),
+                        tool_calls=current_state.values.get("tool_calls", []),
+                        context=current_state.values.get("context", {}),
+                        step=current_state.values.get("step", "start")
+                    )
+                else:
+                    # First message in conversation
+                    initial_state = AgentState(
+                        user_query=user_query,
+                        messages=[
+                            SystemMessage(content=self.system_prompt),
+                            HumanMessage(content=user_query)
+                        ]
+                    )
+            except:
+                # Fallback to new conversation if checkpointer fails
+                initial_state = AgentState(
+                    user_query=user_query,
+                    messages=[
+                        SystemMessage(content=self.system_prompt),
+                        HumanMessage(content=user_query)
+                    ]
+                )
             
             # Run the graph with proper configuration
             final_state = self.graph.invoke(initial_state, config)
             return final_state
             
             # Handle both AgentState objects and dictionaries
-            # if isinstance(final_state, dict):
-            #     return {
-            #         "response": final_state.get("response", "I apologize, but I couldn't generate a proper response."),
-            #         "products": final_state.get("search_results", []),
-            #         "analysis": final_state.get("analysis", ""),
-            #         "tool_calls": final_state.get("tool_calls", []),
-            #         "step": final_state.get("step", "unknown")
-            #     }
-            # else:
-            #     return {
-            #         "response": final_state.response,
-            #         "products": final_state.search_results,
-            #         "analysis": final_state.analysis,
-            #         "tool_calls": final_state.tool_calls,
-            #         "step": final_state.step
-            #     }
+            if isinstance(final_state, dict):
+                # Extract the response from the last message
+                messages = final_state.get("messages", [])
+                response_content = ""
+                if messages:
+                    last_message = messages[-1]
+                    if hasattr(last_message, 'content'):
+                        response_content = last_message.content
+                    elif isinstance(last_message, dict):
+                        response_content = last_message.get('content', '')
+                
+                return {
+                    "response": response_content or "I apologize, but I couldn't generate a proper response.",
+                    "products": final_state.get("search_results", []),
+                    "analysis": final_state.get("analysis", ""),
+                    "tool_calls": final_state.get("tool_calls", []),
+                    "step": final_state.get("step", "unknown"),
+                    "thread_id": thread_id
+                }
+            else:
+                # Handle AgentState object
+                messages = final_state.messages
+                response_content = ""
+                if messages:
+                    last_message = messages[-1]
+                    if hasattr(last_message, 'content'):
+                        response_content = last_message.content
+            
+            return {
+                    "response": response_content or final_state.response,
+                "products": final_state.search_results,
+                "analysis": final_state.analysis,
+                "tool_calls": final_state.tool_calls,
+                    "step": final_state.step,
+                    "thread_id": thread_id
+            }
             
         except Exception as e:
             logger.error(f"Error in chat: {e}")
@@ -488,35 +569,6 @@ class KingArthurBakingAgent:
                 "step": "error"
             }
     
-    def get_graph_visualization(self) -> Dict[str, Any]:
-        """Get a visualization of the agent's graph structure."""
-        try:
-            # Create a simple representation of the graph
-            graph_data = {
-                "nodes": [
-                    {"id": "analyze_query", "label": "Analyze Query", "type": "process"},
-                    {"id": "search_products", "label": "Search Products", "type": "action"},
-                    {"id": "get_recommendations", "label": "Get Recommendations", "type": "action"},
-                    {"id": "compare_products", "label": "Compare Products", "type": "action"},
-                    {"id": "reason_about_results", "label": "Reason About Results", "type": "process"},
-                    {"id": "generate_response", "label": "Generate Response", "type": "output"}
-                ],
-                "edges": [
-                    {"from": "analyze_query", "to": "search_products", "condition": "search"},
-                    {"from": "analyze_query", "to": "get_recommendations", "condition": "recommendations"},
-                    {"from": "analyze_query", "to": "compare_products", "condition": "compare"},
-                    {"from": "search_products", "to": "reason_about_results"},
-                    {"from": "get_recommendations", "to": "reason_about_results"},
-                    {"from": "compare_products", "to": "reason_about_results"},
-                    {"from": "reason_about_results", "to": "generate_response"}
-                ]
-            }
-            
-            return graph_data
-            
-        except Exception as e:
-            logger.error(f"Error getting graph visualization: {e}")
-            return {"nodes": [], "edges": []}
     
     def get_stats(self) -> Dict[str, Any]:
         """Get agent statistics."""

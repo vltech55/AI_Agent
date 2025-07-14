@@ -40,7 +40,7 @@ class KingArthurScraper:
             "accept": "*/*",
             "accept-encoding": "gzip, deflate, br, zstd",
             "accept-language": "en-US,en;q=0.9",
-            "authorization": "Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJFUzI1NiJ9.eyJjaWQiOlsxXSwiY29ycyI6WyJodHRwczovL3Nob3Aua2luZ2FydGh1cmJha2luZy5jb20iXSwiZWF0IjoxNzUyMzIzNTc4LCJpYXQiOjE3NTIxNTA3NzgsImlzcyI6IkJDIiwic2lkIjoxMDAxNDI3MDA3LCJzdWIiOiJCQyIsInN1Yl90eXBlIjowLCJ0b2tlbl90eXBlIjoxfQ.9a_WOoqp0ALqOF6ApyAUjRgljDjEb2ImukDMEyKbQCnuNaec3eCtCXMpD12Wh9SwlI4NdqbrDe5QoBVdIHH54Q",
+            "authorization": "Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJFUzI1NiJ9.eyJjaWQiOlsxXSwiY29ycyI6WyJodHRwczovL3Nob3Aua2luZ2FydGh1cmJha2luZy5jb20iXSwiZWF0IjoxNzUyNTgyNzc4LCJpYXQiOjE3NTI0MDk5NzgsImlzcyI6IkJDIiwic2lkIjoxMDAxNDI3MDA3LCJzdWIiOiJCQyIsInN1Yl90eXBlIjowLCJ0b2tlbl90eXBlIjoxfQ.kteZfg3XeeSAv1M6fpvkZZgoVQvRiPItoz61F8QqaQa3GQH3g5WLXaO0QZwfBHgeV0CXw5E2-oQ9857zSsTOaA",
             "cache-control": "no-cache",
             "origin": "https://shop.kingarthurbaking.com",
             "pragma": "no-cache",
@@ -437,6 +437,7 @@ class KingArthurScraper:
             
             # Scrape sales information from product page
             product_url = product.get('url')
+            enhanced_data['nutrition_info'] = self.scrape_nutrition_info_from_page(product_url)
             if product_url:
                 sales_info = self.scrape_sales_info_from_page(product_url)
                 enhanced_data['sales_info'] = sales_info
@@ -464,6 +465,41 @@ class KingArthurScraper:
         except Exception as e:
             logger.error(f"Error enhancing product {product.get('name', 'Unknown')}: {e}")
             return None
+
+    def scrape_nutrition_info_from_page(self, product_url: str) -> Dict:
+        """Scrape nutrition information from individual product page using requests."""
+        nutrition_info = {}
+        
+        if not product_url:
+            return nutrition_info
+        
+        try:
+            # Fetch the product page HTML
+            logger.debug(f"Fetching product page: {product_url}")
+            response = self.session.get(product_url, timeout=10)
+            response.raise_for_status()
+            html_content = response.text
+            
+            # Extract nutrition link from <a class="nutrition-link" href="/content/packaging/213793.pdf">
+            nutrition_link_match = re.search(r'<a\s+class="nutrition-link"\s+href="([^"]+)"[^>]*>', html_content, re.IGNORECASE)
+            if nutrition_link_match:
+                href = nutrition_link_match.group(1)
+                # Convert relative URL to absolute URL if needed
+                if href.startswith('/'):
+                    nutrition_info["nutrition_link"] = f"https://shop.kingarthurbaking.com{href}"
+                else:
+                    nutrition_info["nutrition_link"] = href
+                logger.debug(f"Found nutrition link: {nutrition_info['nutrition_link']}")
+            else:
+                logger.debug(f"No nutrition link found for {product_url}")
+            
+        except requests.exceptions.RequestException as e:
+            logger.debug(f"HTTP error fetching {product_url}: {e}")
+        except Exception as e:
+            logger.debug(f"Error scraping nutrition info from {product_url}: {e}")
+        
+        return nutrition_info
+            
 
     def build_graphql_query(self, entity_id: int) -> str:
         """Build comprehensive GraphQL query to capture all product fields."""
@@ -609,17 +645,57 @@ class KingArthurScraper:
                 except ValueError:
                     pass
             
-            # Extract non-sale price (sr-only)
+            # Extract non-sale price (sr-only) - try multiple patterns
+            sr_only_price = None
+            
+            # Pattern 1: Original pattern for non-sale price
             non_sale_match = re.search(r'<span[^>]*data-product-non-sale-price-without-tax[^>]*class="[^"]*price[^"]*price--non-sale[^"]*"[^>]*>(.*?)</span>', html_content, re.DOTALL)
             if non_sale_match:
                 non_sale_content = non_sale_match.group(1)
-                # Extract the price, excluding the sr-only text
                 price_match = re.search(r'\$([0-9,]+\.?[0-9]*)', non_sale_content)
                 if price_match:
                     try:
-                        sales_info["sr_only"] = float(price_match.group(1).replace(',', ''))
+                        sr_only_price = float(price_match.group(1).replace(',', ''))
                     except ValueError:
                         pass
+            
+            # Pattern 2: Look for any element with sr-only class containing price
+            if sr_only_price is None:
+                sr_only_matches = re.finditer(r'<[^>]*class="[^"]*sr-only[^"]*"[^>]*>([^<]*\$[0-9,]+\.?[0-9]*[^<]*)</[^>]*>', html_content, re.DOTALL | re.IGNORECASE)
+                for match in sr_only_matches:
+                    sr_only_content = match.group(1)
+                    price_match = re.search(r'\$([0-9,]+\.?[0-9]*)', sr_only_content)
+                    if price_match:
+                        try:
+                            sr_only_price = float(price_match.group(1).replace(',', ''))
+                            break
+                        except ValueError:
+                            continue
+            
+            # Pattern 3: Look for screen reader text patterns
+            if sr_only_price is None:
+                sr_patterns = [
+                    r'<span[^>]*class="[^"]*sr-only[^"]*"[^>]*>[^<]*\$([0-9,]+\.?[0-9]*)',
+                    r'<span[^>]*sr-only[^>]*>[^<]*\$([0-9,]+\.?[0-9]*)',
+                    r'class="sr-only"[^>]*>[^<]*\$([0-9,]+\.?[0-9]*)'
+                ]
+                
+                for pattern in sr_patterns:
+                    matches = re.finditer(pattern, html_content, re.IGNORECASE)
+                    for match in matches:
+                        try:
+                            sr_only_price = float(match.group(1).replace(',', ''))
+                            break
+                        except (ValueError, IndexError):
+                            continue
+                    if sr_only_price is not None:
+                        break
+            
+            if sr_only_price is not None:
+                sales_info["sr_only"] = sr_only_price
+                logger.debug(f"Found sr_only price: ${sr_only_price} for {product_url}")
+            else:
+                logger.debug(f"No sr_only price found for {product_url}")
             
             # Extract bulk promo
             bulk_promo_match = re.search(r'<span class="bulk-promo">([^<]+)</span>', html_content)
