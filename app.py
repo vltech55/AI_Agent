@@ -716,6 +716,8 @@ def initialize_session_state():
             st.session_state.pending_query = None
         if 'thread_id' not in st.session_state:
             st.session_state.thread_id = f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        if 'processing_started' not in st.session_state:
+            st.session_state.processing_started = False
     except Exception as e:
         logger.error(f"Error initializing session state: {e}")
 
@@ -1025,7 +1027,7 @@ def render_chat_input():
                 use_container_width=True
             )
     
-    # Handle new submission
+    # Phase 1: Handle new submission - show user message immediately
     if submit_button and prompt and prompt.strip():
         # Validate input first
         is_valid, validation_error = validate_user_input(prompt)
@@ -1045,10 +1047,76 @@ def render_chat_input():
             st.session_state.chat_history[-1].get("role") == "user"):
             return
         
-        # Process the message immediately without rerun
-        process_user_message(prompt)
+        # Set processing state and add user message immediately
+        st.session_state.is_processing = True
+        st.session_state.pending_query = prompt
+        st.session_state.last_query_time = time.time()
+        
+        # Add user message to history
+        user_message = {
+            "role": "user",
+            "content": prompt,
+            "timestamp": datetime.now().strftime("%H:%M:%S")
+        }
+        st.session_state.chat_history.append(user_message)
+        
+        # Rerun to show user message immediately
+        st.rerun()
     
-    # Show processing status without triggering additional processing
+    # Phase 2: Process pending query (runs after rerun shows user message)
+    elif (st.session_state.get('pending_query') and 
+          st.session_state.is_processing and 
+          not st.session_state.get('processing_started')):
+        
+        # Set flag to prevent multiple processing
+        st.session_state.processing_started = True
+        prompt = st.session_state.pending_query
+        
+        # Process with loading indicator
+        with st.spinner("🤖 Processing your question..."):
+            try:
+                response = st.session_state.agent.chat(prompt, thread_id=st.session_state.thread_id)
+                
+                # Extract response content safely
+                if isinstance(response, dict):
+                    content = response["messages"][-1].content if response["messages"] else "I apologize, but I couldn't process your request."
+                    products = response.get("products", [])
+                else:
+                    content = str(response) if response else "I apologize, but I couldn't generate a response."
+                    products = []
+                
+                # Add assistant message to history
+                assistant_message = {
+                    "role": "assistant",
+                    "content": content,
+                    "products": products,
+                    "timestamp": datetime.now().strftime("%H:%M:%S")
+                }
+                st.session_state.chat_history.append(assistant_message)
+                    
+            except Exception as e:
+                error_msg = f"I apologize, but I encountered an error while processing your request. Please try again."
+                logger.error(f"Chat error: {e}")
+                
+                # Add error message to history
+                error_message = {
+                    "role": "assistant",
+                    "content": error_msg,
+                    "products": [],
+                    "timestamp": datetime.now().strftime("%H:%M:%S")
+                }
+                st.session_state.chat_history.append(error_message)
+            
+            finally:
+                # Clear all processing flags
+                st.session_state.is_processing = False
+                st.session_state.pending_query = None
+                st.session_state.processing_started = False
+                
+                # Rerun to show the response
+                st.rerun()
+    
+    # Show processing status
     if st.session_state.is_processing and st.session_state.get('pending_query'):
         query_preview = st.session_state.pending_query[:50] + "..." if len(st.session_state.pending_query) > 50 else st.session_state.pending_query
         st.markdown(f"""
@@ -1063,61 +1131,6 @@ def render_chat_input():
             </div>
         </div>
         """, unsafe_allow_html=True)
-
-def process_user_message(prompt: str):
-    """Process a user message without causing multiple executions."""
-    try:
-        # Set processing flags
-        st.session_state.is_processing = True
-        st.session_state.pending_query = prompt
-        st.session_state.last_query_time = time.time()
-        
-        # Add user message to history immediately
-        user_message = {
-            "role": "user",
-            "content": prompt,
-            "timestamp": datetime.now().strftime("%H:%M:%S")
-        }
-        st.session_state.chat_history.append(user_message)
-        
-        # Process with the agent
-        with st.spinner("🤖 Processing your question..."):
-            response = st.session_state.agent.chat(prompt, thread_id=st.session_state.thread_id)
-            
-            # Extract response content safely
-            if isinstance(response, dict):
-                content = response["messages"][-1].content if response["messages"] else "I apologize, but I couldn't process your request."
-                products = response.get("products", [])
-            else:
-                content = str(response) if response else "I apologize, but I couldn't generate a response."
-                products = []
-            
-            # Add assistant message to history
-            assistant_message = {
-                "role": "assistant",
-                "content": content,
-                "products": products,
-                "timestamp": datetime.now().strftime("%H:%M:%S")
-            }
-            st.session_state.chat_history.append(assistant_message)
-                
-    except Exception as e:
-        error_msg = f"I apologize, but I encountered an error while processing your request. Please try again."
-        logger.error(f"Chat error: {e}")
-        
-        # Add error message to history
-        error_message = {
-            "role": "assistant",
-            "content": error_msg,
-            "products": [],
-            "timestamp": datetime.now().strftime("%H:%M:%S")
-        }
-        st.session_state.chat_history.append(error_message)
-    
-    finally:
-        # Clear processing flags
-        st.session_state.is_processing = False
-        st.session_state.pending_query = None
 
 def main():
     """Main application function with improved error handling."""
