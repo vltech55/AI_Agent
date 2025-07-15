@@ -60,31 +60,39 @@ def apply_professional_styles():
             margin: 0 auto;
         }
 
-        /* Chat input at bottom of content */
+        /* Fixed chat input at bottom of screen */
         .stChatFloatingInputContainer {
-            position: relative !important;
-            bottom: auto !important;
+            position: fixed !important;
+            bottom: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
             z-index: 1000 !important;
             background: var(--background) !important;
             border-top: 1px solid var(--border) !important;
             padding: 1rem !important;
-            margin-top: 2rem !important;
-            margin-bottom: 0 !important;
+            margin: 0 !important;
         }
         
-        /* Ensure chat input stays within main content area */
+        /* Adjust for sidebar on desktop */
+        @media (min-width: 769px) {
+            .stChatFloatingInputContainer {
+                left: 336px !important; /* Standard Streamlit sidebar width */
+            }
+        }
+        
+        /* Ensure chat input styling */
         .stChatInputContainer {
             margin-left: 0 !important;
             margin-right: 0 !important;
             max-width: 100% !important;
         }
         
-        /* Remove extra padding since input is now in natural flow */
+        /* Add padding to main content so last message isn't hidden */
         .stMainBlockContainer {
-            padding-bottom: 0 !important;
+            padding-bottom: 120px !important;
         }
         
-        /* Ensure proper spacing after messages */
+        /* Ensure messages don't get hidden behind fixed input */
         .stChatMessageContainer {
             margin-bottom: 1rem !important;
         }
@@ -494,32 +502,27 @@ def apply_professional_styles():
             }
             .stChatFloatingInputContainer {
                 padding: 0.5rem !important;
-                margin-top: 1rem !important;
+                left: 0 !important; /* Full width on mobile */
+                right: 0 !important;
             }
             .stMainBlockContainer {
-                padding-bottom: 0 !important;
+                padding-bottom: 100px !important; /* Less padding on mobile */
             }
         }
     </style>
     
     <script>
-        // Auto-scroll to bottom to show chat input after new messages
-        function scrollToShowInput() {
+        // Auto-scroll to show latest message above fixed input
+        function scrollToLatestMessage() {
             setTimeout(() => {
-                // Find the chat input container
-                const chatInput = document.querySelector('.stChatFloatingInputContainer');
-                if (chatInput) {
-                    chatInput.scrollIntoView({ 
-                        behavior: 'smooth', 
-                        block: 'end' 
-                    });
-                } else {
-                    // Fallback: scroll to bottom of page
-                    window.scrollTo({
-                        top: document.body.scrollHeight,
-                        behavior: 'smooth'
-                    });
-                }
+                // Scroll to bottom but account for fixed input height
+                const fixedInputHeight = 120; // Account for fixed input
+                const scrollPosition = document.body.scrollHeight - window.innerHeight - fixedInputHeight;
+                
+                window.scrollTo({
+                    top: Math.max(0, scrollPosition),
+                    behavior: 'smooth'
+                });
             }, 300);
         }
         
@@ -527,7 +530,7 @@ def apply_professional_styles():
         const observer = new MutationObserver((mutations) => {
             mutations.forEach((mutation) => {
                 if (mutation.type === 'childList') {
-                    scrollToShowInput();
+                    scrollToLatestMessage();
                 }
             });
         });
@@ -707,9 +710,9 @@ def main():
                     "products": products
                 })
                 
-                # Auto-scroll to show chat input after new message
+                # Auto-scroll to show latest message above fixed input
                 st.markdown(
-                    '<script>setTimeout(() => { if (typeof scrollToShowInput !== "undefined") { scrollToShowInput(); } else { window.scrollTo(0, document.body.scrollHeight); } }, 200);</script>', 
+                    '<script>setTimeout(() => { if (typeof scrollToLatestMessage !== "undefined") { scrollToLatestMessage(); } else { window.scrollTo(0, document.body.scrollHeight - 120); } }, 200);</script>', 
                     unsafe_allow_html=True
                 )
                 
@@ -727,9 +730,9 @@ def main():
                     "products": []
                 })
                 
-                # Auto-scroll to show chat input after error message
+                # Auto-scroll to show latest message above fixed input
                 st.markdown(
-                    '<script>setTimeout(() => { if (typeof scrollToShowInput !== "undefined") { scrollToShowInput(); } else { window.scrollTo(0, document.body.scrollHeight); } }, 200);</script>', 
+                    '<script>setTimeout(() => { if (typeof scrollToLatestMessage !== "undefined") { scrollToLatestMessage(); } else { window.scrollTo(0, document.body.scrollHeight - 120); } }, 200);</script>', 
                     unsafe_allow_html=True
                 )
 
