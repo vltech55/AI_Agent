@@ -50,8 +50,13 @@ You have to make response as fast as you can.
 
 After gathering information, you have to generate a response to the user's query.
 Make sure that:
-1. You are answering the user's query.
+1. You are answering the user's query exactly.
 2. You are providing specific product recommendations with details.
+3. Your response is well formatted and easy to understand.
+4. Always sort the products by price, reviews, etc. If there is no sort, you should sort by price. Decide ascending or descending according to the user's query.
+5. According to the user's query, you should provide recommendations.
+6. If the user's query is not clear, you should ask for more information.
+7. If the user's query is not related to the products, you should say that you are not sure about the product.
 """
 
 mongo_schema = """"""

@@ -89,7 +89,7 @@ def apply_professional_styles():
         
         /* Add padding to main content so last message isn't hidden */
         .stMainBlockContainer {
-            padding-bottom: 120px !important;
+            padding-bottom: 160px !important;
         }
         
         /* Ensure messages don't get hidden behind fixed input */
@@ -506,7 +506,7 @@ def apply_professional_styles():
                 right: 0 !important;
             }
             .stMainBlockContainer {
-                padding-bottom: 100px !important; /* Less padding on mobile */
+                padding-bottom: 140px !important; /* Less padding on mobile */
             }
         }
     </style>
@@ -515,22 +515,43 @@ def apply_professional_styles():
         // Auto-scroll to show latest message above fixed input
         function scrollToLatestMessage() {
             setTimeout(() => {
-                // Scroll to bottom but account for fixed input height
-                const fixedInputHeight = 120; // Account for fixed input
-                const scrollPosition = document.body.scrollHeight - window.innerHeight - fixedInputHeight;
+                // Try to get actual input container height
+                const inputContainer = document.querySelector('.stChatFloatingInputContainer');
+                let inputHeight = 160; // Default fallback
+                
+                if (inputContainer) {
+                    const rect = inputContainer.getBoundingClientRect();
+                    inputHeight = rect.height;
+                }
+                
+                const additionalPadding = 30; // Extra space for comfort
+                const totalOffset = inputHeight + additionalPadding;
+                
+                // Scroll to bottom but leave space for input bar
+                const scrollPosition = document.body.scrollHeight - window.innerHeight - totalOffset;
                 
                 window.scrollTo({
                     top: Math.max(0, scrollPosition),
                     behavior: 'smooth'
                 });
-            }, 300);
+            }, 500); // Increased timeout for better reliability
         }
         
-        // Observer for new messages
+        // Enhanced observer for new messages
         const observer = new MutationObserver((mutations) => {
             mutations.forEach((mutation) => {
                 if (mutation.type === 'childList') {
-                    scrollToLatestMessage();
+                    // Check if new chat messages were added
+                    const newNodes = Array.from(mutation.addedNodes);
+                    const hasChatMessage = newNodes.some(node => 
+                        node.nodeType === Node.ELEMENT_NODE && 
+                        (node.querySelector('[data-testid="stChatMessage"]') || 
+                         node.getAttribute && node.getAttribute('data-testid') === 'stChatMessage')
+                    );
+                    
+                    if (hasChatMessage) {
+                        scrollToLatestMessage();
+                    }
                 }
             });
         });
@@ -712,7 +733,7 @@ def main():
                 
                 # Auto-scroll to show latest message above fixed input
                 st.markdown(
-                    '<script>setTimeout(() => { if (typeof scrollToLatestMessage !== "undefined") { scrollToLatestMessage(); } else { window.scrollTo(0, document.body.scrollHeight - 120); } }, 200);</script>', 
+                    '<script>setTimeout(() => { if (typeof scrollToLatestMessage !== "undefined") { scrollToLatestMessage(); } else { window.scrollTo(0, document.body.scrollHeight - 180); } }, 300);</script>', 
                     unsafe_allow_html=True
                 )
                 
@@ -732,7 +753,7 @@ def main():
                 
                 # Auto-scroll to show latest message above fixed input
                 st.markdown(
-                    '<script>setTimeout(() => { if (typeof scrollToLatestMessage !== "undefined") { scrollToLatestMessage(); } else { window.scrollTo(0, document.body.scrollHeight - 120); } }, 200);</script>', 
+                    '<script>setTimeout(() => { if (typeof scrollToLatestMessage !== "undefined") { scrollToLatestMessage(); } else { window.scrollTo(0, document.body.scrollHeight - 180); } }, 300);</script>', 
                     unsafe_allow_html=True
                 )
 
