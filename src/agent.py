@@ -36,19 +36,29 @@ You are allowed to make multiple calls (either together or in sequence).
 Only look up information when you are sure of what you want.
 
 There are two tools you can use to get information:
+***
 1. retrieve_information: This tool performs semantic/hybrid search over product descriptions, ingredients, and details. Use this for natural language queries like "chocolate cake mix" or "gluten-free options".
 2. query_information: This tool accepts natural language queries that get converted to MongoDB queries. Use this for specific queries like "most expensive products" or "products under $10". Do NOT pass MongoDB syntax directly - use natural language.
 
 If the user wants exact count, price, images, type, or list of products and query with exact information. You should use query_information tool.
 If the user wants you to recommend, which means user don't know exact information. You should use retrieve_information tool.
+If you need to look up some information before asking a follow up question, you are allowed to do that!
+***
 
 Here is some special cases:
+***
 If there is no result from query_information tool, you should use retrieve_information tool first, take one result and understand it and then use query_information tool with the information you have gathered.
+If there are so many results, provide the total count and show only 10 of them by detailed.
+***
 
-If you need to look up some information before asking a follow up question, you are allowed to do that!
-You have to make response as fast as you can.
+Here is the important rules that you have to follow:
+***
+1. You have to make response as fast as you can.
+2. You always have to provide the total count of the results with query_information tool. Sending query_information tool with the query like "total count of products under $50" will return the total count of the products under $50.
+3. After gathering information, you have to generate a response from the information you have gathered to the user's query.
+4. It must be well-structured and easy to understand.
+***
 
-After gathering information, you have to generate a response to the user's query.
 Make sure that:
 1. You are answering the user's query exactly.
 2. You are providing specific product recommendations with details.
@@ -226,50 +236,51 @@ class KingArthurBakingAgent:
 
                 You can list any field from the schema.
 
-                example queries and fields:
+                example queries and mongo_query and example response according to the query:
                 ***
                 query: most expensive product
                 mongo_query: [{'$sort': {'$sales_info.orig_price': -1}}, {'$limit': 1}]
-                fields: ["name", "price", "plain_text_description", "images", "details", "Contains"]
+                example response: ["name", "price", "plain_text_description", "images", "details", "Contains"]
 
                 query: most expensive 10 products
                 mongo_query: [{'$sort': {'$sales_info.orig_price': -1}}, {'$limit': 10}]
-                fields: ["name", "price", "plain_text_description"]
+                example response: ["name", "price", "plain_text_description"]
 
                 query: most fallen price product
                 mongo_query: [{'$sort': {'$sales_info.savings': -1}}, {'$limit': 1}]
-                fields: ["name", "price", "plain_text_description"]
+                example response: ["name", "price", "plain_text_description"]
 
                 query: show the image
                 mongo_query: ""
-                fields: ["name", "images", "details"]
+                example response: ["name", "images", "details"]
 
                 query: best seller products
                 mongo_query: ""
-                fields: ["name", "price", "plain_text_description", "custom_fields"]
+                example response: ["name", "price", "plain_text_description", "custom_fields"]
 
                 query: total products count group by flavor
                 mongo_query: [{"$group": {"_id": "$custom_fields._flavor_label", "count": {"$sum": 1}}}]
-                fields: ["_id", "count"]
+                example response: ["_id", "count"]
 
                 query: most fallen price product
                 mongo_query: [{"$sort": {"$sales_info.savings": -1}}, {"$limit": 1}]
-                fields: ["name", "plain_text_description", "sales_info"]
+                example response: ["name", "plain_text_description", "sales_info"]
 
                 query: the product with the most reviews
                 mongo_query: [{"$sort": {"_review_count": -1}}, {"$limit": 1}]
-                fields: ["name", "price", "plain_text_description", "review_summary"]
+                example response: ["name", "price", "plain_text_description", "review_summary"]
 
                 query: total products count
                 mongo_query: [{"$count": "total_products"}]
-                fields: ["total_products"]
+                example response: ["total_products"]
                 ***
                 You should bring all fields that are not in the schema but coming from the MongoDB query.
 
                 We have token limit with you. So you should bring fields as least as possible.
                 I will send you the data with the fields you have brought next time.
 
-                Format your response as a list of strings.
+                Response format:   starts with [ and ends with ]
+                Format your response as a list of strings. Do not include any other information.
                 """),
                 HumanMessage(content=f"""
                     User Query: {query}
@@ -478,6 +489,7 @@ class KingArthurBakingAgent:
                     # Format results for the LLM
                     formatted_results = []
                     for result in search_results:
+                        print(f"[{self.user_id}] Result: {result}")
                         
                         formatted_results.append(json.dumps(self.bson_object_id_to_str(result), indent=2))
                         # formatted_results.append(f"Product: {result.get('name', 'Unknown')}\n"
