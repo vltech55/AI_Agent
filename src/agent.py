@@ -200,6 +200,14 @@ class AgentState(BaseModel):
 def get_thread_safe_checkpointer(thread_id: str) -> MemorySaver:
     """Get or create a thread-safe checkpointer for the given thread ID."""
     with _checkpointer_lock:
+        # Limit cache size to prevent memory leaks
+        if len(_checkpointer_cache) > 100:  # Limit to 100 active conversations
+            # Remove oldest entries
+            oldest_threads = list(_checkpointer_cache.keys())[:50]
+            for old_thread in oldest_threads:
+                del _checkpointer_cache[old_thread]
+            logger.info(f"Cleaned up {len(oldest_threads)} old checkpointers")
+        
         if thread_id not in _checkpointer_cache:
             _checkpointer_cache[thread_id] = MemorySaver()
             logger.info(f"Created new checkpointer for thread {thread_id}")
@@ -211,18 +219,15 @@ class KingArthurBakingAgent:
     def __init__(self, db_manager: Optional['MongoDBManager'] = None, user_id: Optional[str] = None):
         self.user_id = user_id or str(uuid.uuid4())[:8]
         self.system_prompt = prompt
+        # Use single shared LLM instance for all operations to reduce overhead
         self.llm = ChatOpenAI(
             model=settings.llm_model,
-            temperature=settings.temperature
+            temperature=settings.temperature,
+            max_retries=2  # Reduce retries for faster failure
         )
-        self.query_generator = ChatOpenAI(
-            model=settings.llm_model,
-            temperature=settings.temperature
-        )
-        self.field_generator = ChatOpenAI(
-            model=settings.llm_model,
-            temperature=settings.temperature
-        )
+        # Reuse the same LLM instance instead of creating separate ones
+        self.query_generator = self.llm
+        self.field_generator = self.llm
         # Use provided database manager or create new one
         self.db_manager = db_manager if db_manager is not None else MongoDBManager()
         # Create the tool with access to db_manager
@@ -261,105 +266,29 @@ class KingArthurBakingAgent:
         return retrieve_information
     
     def generate_necessary_fields(self, query: str, mongo_query: str) -> List[str]:
-        """Generate the final response to the user."""
-        try:
-            response_prompt = ChatPromptTemplate.from_messages([
-                SystemMessage(content="""You are a friendly and knowledgeable baking assistant for King Arthur Baking.
-                
-                Understand the user query and generate a list of fields that need to be brought from the MongoDB collection.
-                Make sure that you are bringing the fields that are relevant to the user query.
-                And bringing fields as least as possible.
-
-                Here is the MongoDB Collection schema:
-                {mongo_schema}
-
-                It is scraped data from https://shop.kingarthurbaking.com/mixes.
-
-                And here is the custom fields description:
-                {custom_fields_description}                    
-                
-                And here is the example document:
-                {example_document}
-                You have to understand the mongodb schema and the example document.
-
-                You can list any field from the schema.
-
-                example queries and mongo_query and example response according to the query:
-                ***
-                query: most expensive product
-                mongo_query: [{'$sort': {'$sales_info.orig_price': -1}}, {'$limit': 1}]
-                example response: ["name", "sales_info", "plain_text_description", "images", "details", "Contains"]
-
-                query: most expensive 10 products
-                mongo_query: [{'$sort': {'$sales_info.orig_price': -1}}, {'$limit': 10}]
-                example response: ["name", "sales_info", "plain_text_description"]
-
-                query: most fallen price product
-                mongo_query: [{'$sort': {'$sales_info.savings': -1}}, {'$limit': 1}]
-                example response: ["name", "sales_info", "plain_text_description"]
-
-                query: show the image
-                mongo_query: ""
-                example response: ["name", "images", "details"]
-
-                query: best seller products
-                mongo_query: ""
-                example response: ["name", "sales_info", "plain_text_description", "custom_fields"]
-
-                query: total products count group by flavor
-                mongo_query: [{"$group": {"_id": "$custom_fields._flavor_label", "count": {"$sum": 1}}}]
-                example response: ["_id", "count"]
-
-                query: most fallen price product
-                mongo_query: [{"$sort": {"$sales_info.savings": -1}}, {"$limit": 1}]
-                example response: ["name", "plain_text_description", "sales_info"]
-
-                query: fallen price among top 10 expensive products
-                mongo_query: [{"$sort": {"$sales_info.orig_price": -1}}, {"$limit": 10}, {"$sort": {"$sales_info.savings": -1}}]
-                example response: ["name", "plain_text_description", "sales_info"]
-
-                query: the product with the most reviews
-                mongo_query: [{"$sort": {"review_summary.number_of_reviews": -1}}, {"$limit": 1}]
-                example response: ["name", "sales_info", "plain_text_description", "review_summary"]
-
-                query: the different brands of products
-                mongo_query: [{"$group": {"_id": "$brand"}},{"$project": {"_id": 0, "brand": "$_id"}}]
-                example response: ["brand"]
-
-                query: total products count
-                mongo_query: [{"$count": "total_products"}]
-                example response: ["total_products"]
-                ***
-                You should bring all fields that are not in the schema but coming from the MongoDB query all the fields fromthe "$project" part. 
-
-                We have token limit with you. So you should bring fields as least as possible.
-                I will send you the data with the fields you have brought next time.
-
-                Response format:   starts with [ and ends with ]
-                Format your response as a list of strings. Do not include any other information.
-                """),
-                HumanMessage(content=f"""
-                    User Query: {query}
-                    MongoDB Query: {mongo_query}
-                """)
-            ])
-
-            print(f"[{self.user_id}] Generating necessary fields")
-            
-            response = self.field_generator.invoke(response_prompt.format_messages())
-            print(f"[{self.user_id}] Generated necessary fields: {response.content}")
-            try:
-                # Ensure response.content is a string before parsing
-                content = str(response.content) if hasattr(response, 'content') else str(response)
-                return json.loads(content)
-            except (json.JSONDecodeError, TypeError) as e:
-                logger.error(f"[{self.user_id}] Error parsing necessary fields: {e}")
-                return ["name", "price", "plain_text_description"]  # Fallback fields             
-            
-        except Exception as e:
-            logger.error(f"[{self.user_id}] Error generating response: {e}")
-            response = "I apologize, but I encountered an error while generating a response. Please try again."
-            return []
+        """Generate necessary fields using fast heuristics instead of LLM calls."""
+        query_lower = query.lower()
+        
+        # Use pattern matching for speed instead of expensive LLM calls
+        if any(word in query_lower for word in ['image', 'picture', 'photo']):
+            return ["name", "images", "price", "plain_text_description"]
+        elif any(word in query_lower for word in ['price', 'cost', 'expensive', 'cheap', 'savings']):
+            return ["name", "price", "sales_info", "plain_text_description"]
+        elif any(word in query_lower for word in ['review', 'rating', 'star']):
+            return ["name", "review_summary", "price", "plain_text_description"]
+        elif any(word in query_lower for word in ['ingredient', 'contain', 'allerg']):
+            return ["name", "ingredients", "Contains", "allergen_link", "plain_text_description"]
+        elif any(word in query_lower for word in ['detail', 'description', 'info']):
+            return ["name", "plain_text_description", "details", "price"]
+        elif any(word in query_lower for word in ['count', 'total', 'number', 'how many']):
+            return ["_id", "count", "total", "name"]
+        elif any(word in query_lower for word in ['flavor', 'category', 'type']):
+            return ["name", "custom_fields", "plain_text_description", "price"]
+        elif any(word in query_lower for word in ['brand']):
+            return ["brand", "name"]
+        else:
+            # Default essential fields for general queries
+            return ["name", "price", "plain_text_description", "custom_fields"]
     
     def bson_object_id_to_str(self, doc):
         """Convert BSON ObjectId and datetime objects to strings for JSON serialization."""

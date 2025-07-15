@@ -53,11 +53,11 @@ class MongoDBManager:
                         "serverSelectionTimeoutMS=3000",    # Fast failure detection
                         "socketTimeoutMS=15000",            # Increased for concurrent operations
                         "connectTimeoutMS=3000",            # Fast connection timeout
-                        "maxPoolSize=100",                  # Large pool for many concurrent users
-                        "minPoolSize=10",                   # Keep minimum connections alive
-                        "maxIdleTimeMS=45000",              # Connection idle timeout
-                        "waitQueueTimeoutMS=3000",          # Queue timeout for connection requests
-                        "maxConnecting=10",                 # Limit concurrent connection attempts
+                        "maxPoolSize=50",                   # Reduced pool size for HF Spaces
+                        "minPoolSize=5",                    # Reduced minimum connections
+                        "maxIdleTimeMS=30000",              # Faster idle timeout
+                        "waitQueueTimeoutMS=2000",          # Faster queue timeout
+                        "maxConnecting=5",                  # Reduced concurrent connections
                         "heartbeatFrequencyMS=5000",        # Regular health checks
                         "retryWrites=true",                 # Enable retryable writes
                         "retryReads=true",                  # Enable retryable reads

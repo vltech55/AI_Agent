@@ -7,6 +7,7 @@ import sys
 import os
 import time
 import uuid
+from datetime import datetime, timedelta
 
 # Add the parent directory to the path to import from src
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -588,13 +589,59 @@ def apply_professional_styles():
 def initialize_components():
     """Initialize the database manager and agent (cached for performance)."""
     try:
+        # Single shared database manager for all users
         db_manager = MongoDBManager()
-        agent = KingArthurBakingAgent(db_manager=db_manager)
-        return db_manager, agent
+        return db_manager
     except Exception as e:
         logger.error(f"Failed to initialize components: {e}")
         st.error(f"⚠️ Failed to initialize components: {str(e)}")
-        return None, None
+        return None
+
+def cleanup_idle_sessions():
+    """Clean up idle user sessions to prevent memory leaks."""
+    current_time = datetime.now()
+    timeout_minutes = 30  # Clean sessions idle for more than 30 minutes
+    
+    keys_to_remove = []
+    for key in st.session_state.keys():
+        if isinstance(key, str) and key.startswith("agent_"):
+            # Check if session has been idle
+            last_activity = st.session_state.get(f"{key}_last_activity", current_time)
+            if isinstance(last_activity, datetime) and (current_time - last_activity).total_seconds() > timeout_minutes * 60:
+                keys_to_remove.append(key)
+                keys_to_remove.append(f"{key}_last_activity")
+    
+    for key in keys_to_remove:
+        if key in st.session_state:
+            del st.session_state[key]
+    
+    if keys_to_remove:
+        logger.info(f"Cleaned up {len(keys_to_remove)//2} idle sessions")
+
+def get_user_agent(db_manager, user_id: Optional[str] = None):
+    """Get or create user-specific agent with shared database connection."""
+    if not user_id:
+        user_id = st.session_state.get("user_id", str(uuid.uuid4())[:8])
+        st.session_state.user_id = user_id
+    
+    # Clean up idle sessions periodically
+    if len([k for k in st.session_state.keys() if isinstance(k, str) and k.startswith("agent_")]) > 5:
+        cleanup_idle_sessions()
+    
+    # Create lightweight agent per user but share database connection
+    agent_key = f"agent_{user_id}"
+    activity_key = f"{agent_key}_last_activity"
+    
+    if agent_key not in st.session_state:
+        st.session_state[agent_key] = KingArthurBakingAgent(
+            db_manager=db_manager, 
+            user_id=user_id
+        )
+    
+    # Update last activity
+    st.session_state[activity_key] = datetime.now()
+    
+    return st.session_state[agent_key]
 
 def render_sidebar(db_manager: Optional[MongoDBManager]):
     with st.sidebar:
@@ -678,9 +725,9 @@ def main():
     apply_professional_styles()
     
     # Initialize components (cached)
-    db_manager, agent = initialize_components()
+    db_manager = initialize_components()
     
-    if not db_manager or not agent:
+    if not db_manager:
         st.stop()
 
     render_sidebar(db_manager)
@@ -705,6 +752,9 @@ def main():
         # Process response with spinner
         with st.spinner("Processing your request..."):
             try:
+                # Get user-specific agent
+                agent = get_user_agent(db_manager)
+                
                 # Pass thread_id for conversation memory
                 response = agent.chat(prompt, thread_id=st.session_state.thread_id)
                 
@@ -906,10 +956,10 @@ def render_enhanced_status(db_manager: Optional[MongoDBManager]):
     """, unsafe_allow_html=True)
     
     # AI status with details
-    db_manager, agent = initialize_components()
-    ai_status = "Online" if agent else "Offline"
-    ai_class = "connected" if agent else ""
-    ai_desc = "GPT-4 powered • Ready to help" if agent else "Agent not initialized"
+    db_status = db_manager is not None if db_manager else False
+    ai_status = "Online" if db_status else "Offline"
+    ai_class = "connected" if db_status else ""
+    ai_desc = "GPT-4 powered • Ready to help" if db_status else "Agent not initialized"
     
     st.markdown(f"""
         <div class="info-card">
