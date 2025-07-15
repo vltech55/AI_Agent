@@ -60,16 +60,27 @@ def apply_professional_styles():
             margin: 0 auto;
         }
 
-        /* Chat container scrolling */
+        /* Chat container scrolling - Better approach */
         .stChatFloatingInputContainer {
-            position: fixed !important;
+            position: sticky !important;
             bottom: 0 !important;
-            left: 0 !important;
-            right: 0 !important;
             z-index: 1000 !important;
             background: var(--background) !important;
             border-top: 1px solid var(--border) !important;
             padding: 1rem !important;
+            margin-top: 1rem !important;
+        }
+        
+        /* Ensure chat input stays within main content area */
+        .stChatInputContainer {
+            margin-left: 0 !important;
+            margin-right: 0 !important;
+            max-width: 100% !important;
+        }
+        
+        /* Main content area adjustment */
+        .stMainBlockContainer {
+            padding-bottom: 100px !important;
         }
 
         /* Chat messages container */
@@ -477,6 +488,10 @@ def apply_professional_styles():
             }
             .stChatFloatingInputContainer {
                 padding: 0.5rem !important;
+                margin-top: 0.5rem !important;
+            }
+            .stMainBlockContainer {
+                padding-bottom: 80px !important;
             }
         }
     </style>
