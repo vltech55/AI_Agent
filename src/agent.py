@@ -33,7 +33,9 @@ _checkpointer_lock = threading.Lock()
 
 prompt = """You are a smart AI Assistant for King Arthur Baking.
 You are allowed to make multiple calls (either together or in sequence).
+
 Only look up information when you are sure of what you want.
+If you need to look up some information before asking a follow up question, you are allowed to do that!
 
 There are two tools you can use to get information:
 ***
@@ -42,21 +44,15 @@ There are two tools you can use to get information:
 
 If the user wants exact count, price, images, type, or list of products and query with exact information. You should use query_information tool.
 If the user wants you to recommend, which means user don't know exact information. You should use retrieve_information tool.
-If you need to look up some information before asking a follow up question, you are allowed to do that!
-***
-
-Here is some special cases:
-***
-If there is no result from query_information tool, you should use retrieve_information tool first, take one result and understand it and then use query_information tool with the information you have gathered.
-If there are so many results, provide the total count and show only 10 of them by detailed.
+You can use both tools together.
 ***
 
 Here is the important rules that you have to follow:
 ***
 1. You have to make response as fast as you can.
-2. You always have to provide the total count of the results with query_information tool. Sending query_information tool with the query like "total count of products under $50" will return the total count of the products under $50.
-3. After gathering information, you have to generate a response from the information you have gathered to the user's query.
-4. It must be well-structured and easy to understand.
+2. Always provide the total count of the results.
+3. After gathering information, you have to generate a simple and exact response from the information you have gathered to the user's query.
+4. It must be well-fomatted, well-structured and easy to understand.
 ***
 
 Make sure that:
@@ -67,62 +63,80 @@ Make sure that:
 5. According to the user's query, you should provide recommendations.
 6. If the user's query is not clear, you should ask for more information.
 7. If the user's query is not related to the products, you should say that you are not sure about the product.
+
+Example Tone and Style:
+1. "I'd be delighted to help you choose the perfect mix! Are you baking for a special occasion or just looking for something new to try at home?"
+2. "Absolutely! Our gluten-free bread mix is one of our top sellers, and it's super easy to use. Would you like me to walk you through the ingredients or recipe?"
+3. "Great choice—our seasonal cookie bundle is on sale right now! Let me share a bit about what's included..."
+4. "All of our mixes are made with premium, non-GMO ingredients—let me know if you have any specific dietary needs, and I'll help you find the perfect product!"
+
+Always keep the focus on making the customer's baking experience easy, delicious, and enjoyable with our KING ARTHUR mixes.
 """
 
 mongo_schema = """"""
 example_document = """"""
-custom_fields_description = """Here's an explanation of each field:
+custom_fields_description = """Here's an brief explanation of each field:
 
-1. SKU (Stock Keeping Unit): 213793
-A unique identifier for the product used for inventory management.
+{
+name: The name of the product.
+SKU: (Stock Keeping Unit)A unique identifier for the product used for inventory management.
+price: The price of the product.
+url: The page of website https://shop.kingarthurbaking.com/ that describes about this product. This field is usually https://shop.kingarthurbaking.com/{path}
+aria_label: The label that showed in the https://shop.kingarthurbaking.com/ usually contains name and price info.
+entity_id: The number to identify the product. It is used to get the product review details.
+plain_text_description: The full, detailed description of the product. *This field is useful for providing information"
+path: The subdomain of the item page.
+brand: The brand of the product. It can be one of two values "KINGARTHUR" and "FRONTIERSO"
+categories: The list of json that indicates the subclasses that the product belong. *Don't use this field for search, just for additional information. You have to search about the categories with the custom_fields" for example if it [{"name": "Mixes", "path": "/mixes"}, {"name": "Gluten-Free", "path": "/gluten-free"}], then we can find the product in two subclasses the pages are https://shop.kingarthurbaking.com/mixes and https://shop.kingarthurbaking.com/gluten-free. This field is low-level information because we are only concerning about products in https://shop.kingarthurbaking.com/mixes. This field can be use for additional information.
 
-2. UPC (Universal Product Code): 071012000630
-A barcode symbol that's widely used to identify products in retail.
+custom_fields: The field that represents the essential and important information for the product.
+    {
+        swym-disabled: Indicates whether the product is impacted by certain external services, possibly related to wishlist services (Swym).
+        _Promo_Exclusion: Indicates if the product is excluded from promotions.
+        Various badge fields(e.g., _badge_glutenfree, _badge_kosherpareve): These fields indicate different certifications or attributes, such as whether the product is gluten-free, kosher, organic, made in the USA, etc. All are marked "No," meaning these attributes do not apply to the product.
+        _Parent_Category: The big category to which this product belongs. *This is not main category.*
+        _Child_Category: A subcategory within the parent category. This is the main category that classifies the products. It can be one of 10 different categories. ["0", "Bread", "Cake & Pie", "Cookies", "Dessert Cups", "Doughnuts", "Doughnuts & Muffins", "Frostings & Fillings", "Gluten-Free", "Mix & Pan Sets"] * This field is important for providing information to users*
+        _Online_Exclusive: Indicates whether the product is exclusive to online sales. A value of 0 suggests it's not online exclusive.
+        _sale_label: Indicates if the product is on sale. This means the "SALE" badge is showed on the image of the product in the main page.
+        _clearance_label: Indicates if the product is on clearance. No Visual Effects.
+        _new_label: Shows that the product is considered new. This means the "NEW" badge is showed on the image of the product in the main page.
+        _label_path, _package_path: Paths to the product's label and packaging files, which may be used for display purposes.
+        _type_label: Descriptions of the product type (Dessert, Snack). It can be one of 14 different things ["Biscuits", "Bread", "Brownies", "Cake", "Cookie", "Cookies", "Dog Biscuits", "Doughnuts", "Frosting", "Muffins & Quick Bread", "Pancakes & Waffles", "Pie", "Scone", "Scones"]
+        _flavor_label: The flavor of the product. It is usually used for Filtering. It can be one of 15 different things. ["Apple", "Apricot", "Banana", "Berry", "Blueberry", "Buttermilk", "Chocolate", "Cinnamon", "Coconut", "Cranberry-Orange", "Eggnog", "Fruit", "Fruit & Nut", "Garlic", "Gingerbread"] *This field is important for providing information to users*
+        _category_label: The category of the product. It can be one of 8 different categories. ["Bread Baking", "Breakfast", "Celebration", "Dessert", "Holiday", "Pizza", "Scones", "Snack"] It is usually used for Filtering. *This field is important for providing information to users*
+        _dietary_label: The dietary label of the product. It can be one of 2 different things ["Gluten-Free", "Keto"]. It is usually used for Filtering. *This field is important for providing information to users*
+        _review_avg_score: The average customer review score.
+        _review_count: The number of reviews the product has received.
+        _Special_Savings, _special_savings_label: Indicates the absence of any special savings associated with the product.
+    }
+ingredients: The ingredients that the product have
+Contains: The material that the product have
+allergen_link: The brief information about the allergy with this product.
+details: The list of detail about the product
+images: The list of image url and alt_text of the product.
+review_summary: Information about the reviews
+    {
+        number_of_reviews: The number of reviews the product has received. Same as custom_fields._review_count
+        average_rating: The average customer review score. Same as custom_fields._review_avg_score
+        1: The number of star 1 reviews
+        2: The number of star 2 reviews
+        3: The number of star 3 reviews
+        4: The number of star 4 reviews
+        5: The number of star 5 reviews
+    }
+sales_info: Information about the price.
+    {
+        orig_price: The original price without the Tax
+        sr_only: The price with the Tax
+        saving: The different between sr_only and org_price. This indicates the price is fallen and we can buy it cheaper.
+        bulk_promo: The information about the services we have with the sale. for example. "Buy Any 5+/Save $4" It means if we buy this product more than 5. We can save $4.
+    }
+nutrition_info: Information about the Nutritions that the price have.
+    {
+        nutrition_link: link to the pdf file that describes about the nutrition.
+    }
 
-3. Maximum Purchase: 12 units
-The maximum quantity of the product that can be purchased at one time.
-
-4. swym-disabled: false
-Indicates whether the product is impacted by certain external services, possibly related to wishlist services (Swym).
-
-5. _Promo_Exclusion: No
-Indicates if the product is excluded from promotions.
-
-6. Various badge fields: (e.g., _badge_glutenfree, _badge_kosherpareve)
-These fields indicate different certifications or attributes, such as whether the product is gluten-free, kosher, organic, made in the USA, etc. All are marked "No," meaning these attributes do not apply to the product.
-
-7. _Parent_Category: Mixes
-The main category to which this product belongs.
-
-8. _Child_Category: Cookies
-A subcategory within the parent category.
-
-9. _Online_Exclusive: 0
-Indicates whether the product is exclusive to online sales. A value of 0 suggests it's not online exclusive.
-
-10. _sale_label, _clearance_label: No
-Indicates if the product is on sale or clearance. Both are set to "No."
-
-11. _free_ship_label, _ground_ship_label: No
-Indicates if the product qualifies for free or ground shipping. Both labels are set to "No."
-
-12. _new_label: Yes
-Shows that the product is considered new.
-
-13. _label_path, _package_path:
-Paths to the product's label and packaging files, which may be used for display purposes.
-
-14. _type_label, _flavor_label, _category_label:
-Descriptions of the product type, flavor (Lemon), and relevant categories (Dessert, Snack).
-
-15. _review_avg_score: 4.7
-The average customer review score, which is quite high.
-
-16. _review_count: 14
-The number of reviews the product has received.
-
-17. _Special_Savings, _special_savings_label: No
-Indicates the absence of any special savings associated with the product."""
+"""
 
 try:
     with open('src/schema-king_arthur_baking_db-mixes-mongoDBJSON.json', 'r') as file:
@@ -266,15 +280,23 @@ class KingArthurBakingAgent:
                 mongo_query: [{"$sort": {"$sales_info.savings": -1}}, {"$limit": 1}]
                 example response: ["name", "plain_text_description", "sales_info"]
 
+                query: fallen price among top 10 expensive products
+                mongo_query: [{"$sort": {"$sales_info.orig_price": -1}}, {"$limit": 10}, {"$sort": {"$sales_info.savings": -1}}]
+                example response: ["name", "plain_text_description", "sales_info"]
+
                 query: the product with the most reviews
-                mongo_query: [{"$sort": {"_review_count": -1}}, {"$limit": 1}]
+                mongo_query: [{"$sort": {"review_summary.number_of_reviews": -1}}, {"$limit": 1}]
                 example response: ["name", "price", "plain_text_description", "review_summary"]
+
+                query: the different brands of products
+                mongo_query: [{"$group": {"_id": "$brand"}},{"$project": {"_id": 0, "brand": "$_id"}}]
+                example response: ["brand"]
 
                 query: total products count
                 mongo_query: [{"$count": "total_products"}]
                 example response: ["total_products"]
                 ***
-                You should bring all fields that are not in the schema but coming from the MongoDB query.
+                You should bring all fields that are not in the schema but coming from the MongoDB query all the fields fromthe "$project" part. 
 
                 We have token limit with you. So you should bring fields as least as possible.
                 I will send you the data with the fields you have brought next time.
@@ -404,7 +426,7 @@ class KingArthurBakingAgent:
                     query: How many products categories do you have?
                     pipeline:
                     [
-                        {{"$match": {{"custom_fields._Child_Category": {{"$ne": None}}}}}},
+                        {{"$match": {{"custom_fields._Child_Category": {{"$ne": null}}}}}},
                         {{"$group": {{"_id": "$custom_fields._Child_Category"}}}},
                         {{"$count": "distinct_child_categories"}}
                     ]
@@ -412,7 +434,7 @@ class KingArthurBakingAgent:
                     query: How many products categories do you have? Make a list of them.
                     pipeline:
                     [
-                        {{"$match": {{"custom_fields._Child_Category": {{"$ne": None}}}}}},
+                        {{"$match": {{"custom_fields._Child_Category": {{"$ne": null}}}}}},
                         {{"$group": {{"_id": "$custom_fields._Child_Category"}}}},
                         {{"$group": {{"_id": None, "uniqueChildCategories": {{"$addToSet": "$_id"}}, "count": {{"$sum": 1}}}}}},
                         {{"$project": {{"uniqueChildCategories": 1, "count": 1}}}}
@@ -439,7 +461,16 @@ class KingArthurBakingAgent:
                         {{"$project": {{"name": 1, "custom_fields._flavor_label": 1}}}},
                         {{"$group": {{"_id": "$custom_fields._flavor_label", "products": {{"$push": {{"product_name": "$name"}}}}}}}}
                     ]
+
+                    query: show the list of different brands of products
+                    pipeline:[
+                        {{"$match": {{"brand": {{"$ne": null}}}}}},
+                        {{"$group": {{"_id": "$brand"}}}},
+                        {{"$project": {{"brand": "$_id", "_id": 0}}}}
+                    ]
+
                     ***
+                    Always use $match to filter the documents especially for avoiding none or null values.
                     If there might be lots of documents as a result you should use limit and sort.
 
                     Generate a valid MongoDB aggregation pipeline (as JSON array) that can be used with collection.aggregate(pipeline).
@@ -456,11 +487,13 @@ class KingArthurBakingAgent:
                 # Parse the response as JSON
                 import json
                 response_content = str(response.content) if hasattr(response, 'content') else str(response)
+                print(f"[{self.user_id}] Response content: {response_content}")
                 
                 # Try to extract JSON from the response
                 try:
                     # Try to parse directly
                     mongo_query = json.loads(response_content)
+                    print(f"[{self.user_id}] Parsed MongoDB query: {mongo_query}")
                 except json.JSONDecodeError:
                     # Try to extract JSON from markdown code blocks
                     import re
@@ -482,10 +515,13 @@ class KingArthurBakingAgent:
                     search_results = list(self.db_manager.collection.aggregate(mongo_query))
                 else:
                     search_results = []
+
+                print(f"[{self.user_id}] Search results: {search_results}")
                     
                 self.extract_fields = self.generate_necessary_fields(query, response_content)
                 
                 if search_results:
+                    print(f"[{self.user_id}] Search results: {search_results}")
                     # Format results for the LLM
                     formatted_results = []
                     for result in search_results:

@@ -190,8 +190,9 @@ class MongoDBManager:
         contains = ', '.join(product.get('Contains', ''))
         custom_fields = product.get('custom_fields', '')
         allergens = product.get('allergen_link', '')
+        nutrition = product.get('nutrition_info', '')
 
-        searchable_text = f"This is a mix named {name}. {description}. The ingredients are {ingredients}. Here is the details: {details}. This mix contains {contains}. The custom fields are {custom_fields}. If you want to know more about the allergens, please visit {allergens}."
+        searchable_text = f"This is a mix named {name}. {description}. The ingredients are {ingredients}. Here is the details: {details}. This mix contains {contains}. The custom fields are {custom_fields}. If you want to know more about the allergens, please visit {allergens}. If you want to know about the Nutritions, please visit {nutrition.get('nutrition_link', '')}"
         return searchable_text
 
     def prepare_document(self, product: Dict) -> Dict:
@@ -379,11 +380,15 @@ class MongoDBManager:
                     "$project": {
                         "_id": 1,
                         "name": 1,
-                        "price": 1,
                         "description": 1,
                         "ingredients": 1,
-                        "instructions": 1,
-                        "features": 1,
+                        "details": 1,
+                        "Contains": 1,
+                        "custom_fields": 1,
+                        "allergen_link": 1,
+                        "review_summary": 1,
+                        "images": 1,
+                        "sales_info": 1,
                         "url": 1,
                         "score": {"$meta": "vectorSearchScore"}
                     }
