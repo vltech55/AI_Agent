@@ -45,6 +45,23 @@ There are two tools you can use to get information:
 If the user wants exact count, price, images, type, or list of products and query with exact information. You should use query_information tool.
 If the user wants you to recommend, which means user don't know exact information. You should use retrieve_information tool.
 You can use both tools together.
+When you using query_information tool, first get the total count of results and then get the documents. The response must have the total count of the result.
+Here is the example:
+user query: show me all the products under $50
+**
+step 1:
+query: How many products are there under $50
+pipeline: [{{"$match": {{"price": {{"$lt": 50}}}}}}, {{"$count": "products_under_50"}}]
+get the total count of the result.
+
+step 2:
+query: Show me the list of products under $50
+pipeline: [{{"$match": {{"price": {{"$lt": 50}}}}}}, {{"$limit": 10}}]
+get the list of products under $50.
+
+step 3:
+show the total count of the result and only 10 of the list of products under $50.
+**
 ***
 
 Here is the important rules that you have to follow:
@@ -469,8 +486,21 @@ class KingArthurBakingAgent:
                         {{"$project": {{"brand": "$_id", "_id": 0}}}}
                     ]
 
+                    query: show all the products under $50
+                    pipeline:[
+                        {{"$match": {{"price": {{"$lt": 50}}}}}},
+                        {{"$limit": 10}}
+                    ]
+
+                    query: how many products are there under $50
+                    pipeline:[
+                        {{"$match": {{"price": {{"$lt": 50}}}}}},
+                        {{"$count": "products_under_50"}}
+                    ]
+
                     ***
                     Always use $match to filter the documents especially for avoiding none or null values.
+                    Always use $limit to limit the documents and reduce the response.
                     If there might be lots of documents as a result you should use limit and sort.
 
                     Generate a valid MongoDB aggregation pipeline (as JSON array) that can be used with collection.aggregate(pipeline).
