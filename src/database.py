@@ -190,9 +190,9 @@ class MongoDBManager:
         contains = ', '.join(product.get('Contains', ''))
         custom_fields = product.get('custom_fields', '')
         allergens = product.get('allergen_link', '')
-        nutrition = product.get('nutrition_info', '')
+        nutrition = json.dumps(product.get('nutrition', ''))
 
-        searchable_text = f"This is a mix named {name}. {description}. The ingredients are {ingredients}. Here is the details: {details}. This mix contains {contains}. The custom fields are {custom_fields}. If you want to know more about the allergens, please visit {allergens}. If you want to know about the Nutritions, please visit {nutrition.get('nutrition_link', '')}"
+        searchable_text = f"This is a mix named {name}. {description}. The ingredients are {ingredients}. Here is the details: {details}. This mix contains {contains}. The custom fields are {custom_fields}. If you want to know more about the allergens, please visit {allergens}. The nutrition information is {nutrition}"
         return searchable_text
 
     def prepare_document(self, product: Dict) -> Dict:
@@ -676,7 +676,7 @@ def main():
     db_manager = MongoDBManager()
     
     # Load data from JSON
-    inserted_count = db_manager.load_from_json()
+    inserted_count = db_manager.load_from_json("result.json")
     print(f"Inserted {inserted_count} products")
     
     # Get database stats

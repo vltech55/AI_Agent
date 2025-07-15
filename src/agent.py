@@ -70,7 +70,7 @@ Here is the important rules that you have to follow:
 2. Always provide the total count of the results.
 3. After gathering information, you have to generate a simple and exact response from the information you have gathered to the user's query.
 4. It must be well-fomatted, well-structured and easy to understand.
-5. If the response is less-detailed, you should provide the sales_info information, until less-detailed then provide the description, and then images, and then details, etc.
+5. If the response is less-detailed, you should provide the sales_info information, until less-detailed then provide the description, and then images, and then details, and then nutrition, etc.
 ***
 
 Make sure that:
@@ -148,6 +148,22 @@ sales_info: Information about the price.
         sr_only: The price with the Tax
         saving: The different between sr_only and org_price. This indicates the price is fallen and we can buy it cheaper.
         bulk_promo: The information about the services we have with the sale. for example. "Buy Any 5+/Save $4" It means if we buy this product more than 5. We can save $4.
+    }
+nutrition: Information about the Nutritions that the product have.
+    {
+        servings_per_container: The number of servings per container.
+        serving_size: {
+            amount: the amount of the serving size.
+            unit: the unit of the serving size.
+        }
+        nutrition_facts: {
+            mix: {
+                various materials in the box and their amount.
+            }
+            prepared: {
+                various materials for cooking and their amount.
+            }
+        }
     }
 nutrition_info: Information about the Nutritions that the price have.
     {
@@ -490,14 +506,14 @@ class KingArthurBakingAgent:
                     query: show all the products under $50
                     pipeline:[
                         {{"$match": {{"price": {{"$lt": 50}}}}}},
-                        {{"$sort": {{"price": -1}}}},
+                        {{"$sort": {{"price": 1}}}},
                         {{"$limit": 10}}
                     ]
 
                     query: show all the products more expensive than $50
                     pipeline:[
                         {{"$match": {{"price": {{"$gt": 50}}}}}},
-                        {{"$sort": {{"price": 1}}}},
+                        {{"$sort": {{"price": -1}}}},
                         {{"$limit": 10}}
                     ]
 

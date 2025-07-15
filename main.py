@@ -82,7 +82,7 @@ def setup_database():
         db_manager = MongoDBManager()
         
         # Load data from JSON file
-        inserted_count = db_manager.load_from_json()
+        inserted_count = db_manager.load_from_json("./data/result.json")
         logger.info(f"Inserted {inserted_count} products into database")
         db_manager.create_indexes()
         
