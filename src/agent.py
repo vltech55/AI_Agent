@@ -272,15 +272,15 @@ class KingArthurBakingAgent:
                 ***
                 query: most expensive product
                 mongo_query: [{'$sort': {'$sales_info.orig_price': -1}}, {'$limit': 1}]
-                example response: ["name", "price", "plain_text_description", "images", "details", "Contains"]
+                example response: ["name", "sales_info", "plain_text_description", "images", "details", "Contains"]
 
                 query: most expensive 10 products
                 mongo_query: [{'$sort': {'$sales_info.orig_price': -1}}, {'$limit': 10}]
-                example response: ["name", "price", "plain_text_description"]
+                example response: ["name", "sales_info", "plain_text_description"]
 
                 query: most fallen price product
                 mongo_query: [{'$sort': {'$sales_info.savings': -1}}, {'$limit': 1}]
-                example response: ["name", "price", "plain_text_description"]
+                example response: ["name", "sales_info", "plain_text_description"]
 
                 query: show the image
                 mongo_query: ""
@@ -288,7 +288,7 @@ class KingArthurBakingAgent:
 
                 query: best seller products
                 mongo_query: ""
-                example response: ["name", "price", "plain_text_description", "custom_fields"]
+                example response: ["name", "sales_info", "plain_text_description", "custom_fields"]
 
                 query: total products count group by flavor
                 mongo_query: [{"$group": {"_id": "$custom_fields._flavor_label", "count": {"$sum": 1}}}]
@@ -304,7 +304,7 @@ class KingArthurBakingAgent:
 
                 query: the product with the most reviews
                 mongo_query: [{"$sort": {"review_summary.number_of_reviews": -1}}, {"$limit": 1}]
-                example response: ["name", "price", "plain_text_description", "review_summary"]
+                example response: ["name", "sales_info", "plain_text_description", "review_summary"]
 
                 query: the different brands of products
                 mongo_query: [{"$group": {"_id": "$brand"}},{"$project": {"_id": 0, "brand": "$_id"}}]
