@@ -70,6 +70,7 @@ Here is the important rules that you have to follow:
 2. Always provide the total count of the results.
 3. After gathering information, you have to generate a simple and exact response from the information you have gathered to the user's query.
 4. It must be well-fomatted, well-structured and easy to understand.
+5. If the response is less-detailed, you should provide the sales_info information, until less-detailed then provide the description, and then images, and then details, etc.
 ***
 
 Make sure that:

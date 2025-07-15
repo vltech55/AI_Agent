@@ -100,7 +100,7 @@ def apply_professional_styles():
         
         /* Add padding to main content so last message isn't hidden */
         .stMainBlockContainer {
-            padding-bottom: 160px !important;
+            padding-bottom: 200px !important;
         }
         
         /* Ensure messages don't get hidden behind fixed input */
@@ -110,9 +110,9 @@ def apply_professional_styles():
 
         /* Chat messages container */
         .stChatMessageContainer {
-            max-height: calc(100vh - 200px) !important;
+            max-height: calc(100vh - 240px) !important;
             overflow-y: auto !important;
-            padding-bottom: 120px !important;
+            padding-bottom: 150px !important;
         }
 
         /* Ensure proper scrolling */
@@ -523,7 +523,7 @@ def apply_professional_styles():
                 max-width: 95% !important; /* Slightly smaller on mobile for better margins */
             }
             .stMainBlockContainer {
-                padding-bottom: 140px !important; /* Less padding on mobile */
+                padding-bottom: 180px !important; /* Increased padding on mobile */
             }
         }
     </style>
@@ -534,14 +534,14 @@ def apply_professional_styles():
             setTimeout(() => {
                 // Try to get actual input container height
                 const inputContainer = document.querySelector('.stChatFloatingInputContainer');
-                let inputHeight = 160; // Default fallback
+                let inputHeight = 180; // Updated default fallback
                 
                 if (inputContainer) {
                     const rect = inputContainer.getBoundingClientRect();
                     inputHeight = rect.height;
                 }
                 
-                const additionalPadding = 30; // Extra space for comfort
+                const additionalPadding = 50; // Increased extra space for comfort
                 const totalOffset = inputHeight + additionalPadding;
                 
                 // Scroll to bottom but leave space for input bar
