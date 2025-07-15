@@ -633,9 +633,6 @@ def render_sidebar(db_manager: Optional[MongoDBManager]):
         
         # Enhanced status
         render_enhanced_status(db_manager)
-        
-        # Quick tips
-        render_quick_tips()
 
 def render_chat_view():
     # Professional header
@@ -927,32 +924,6 @@ def render_enhanced_status(db_manager: Optional[MongoDBManager]):
             <div class="info-card-value">{ai_desc}</div>
         </div>
     """, unsafe_allow_html=True)
-
-def render_quick_tips():
-    """Display helpful baking tips and quick actions."""
-    st.markdown("""
-        <div class="sidebar-section">
-            <h3><i class="fas fa-lightbulb"></i> Quick Tips</h3>
-        </div>
-    """, unsafe_allow_html=True)
-    
-    tips = [
-        {"icon": "fas fa-balance-scale", "tip": "Always measure by weight for consistency"},
-        {"icon": "fas fa-thermometer-half", "tip": "Room temperature ingredients mix better"},
-        {"icon": "fas fa-fire", "tip": "Preheat oven 20+ minutes for best results"}
-    ]
-    
-    for tip in tips:
-        st.markdown(f"""
-            <div class="info-card">
-                <div class="info-card-header">
-                    <div class="info-card-title">
-                        <i class="{tip['icon']}"></i> Pro Tip
-                    </div>
-                </div>
-                <div class="info-card-value">{tip['tip']}</div>
-            </div>
-        """, unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main() 
