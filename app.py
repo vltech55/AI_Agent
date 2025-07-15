@@ -60,15 +60,16 @@ def apply_professional_styles():
             margin: 0 auto;
         }
 
-        /* Chat container scrolling - Better approach */
+        /* Chat input at bottom of content */
         .stChatFloatingInputContainer {
-            position: sticky !important;
-            bottom: 0 !important;
+            position: relative !important;
+            bottom: auto !important;
             z-index: 1000 !important;
             background: var(--background) !important;
             border-top: 1px solid var(--border) !important;
             padding: 1rem !important;
-            margin-top: 1rem !important;
+            margin-top: 2rem !important;
+            margin-bottom: 0 !important;
         }
         
         /* Ensure chat input stays within main content area */
@@ -78,9 +79,14 @@ def apply_professional_styles():
             max-width: 100% !important;
         }
         
-        /* Main content area adjustment */
+        /* Remove extra padding since input is now in natural flow */
         .stMainBlockContainer {
-            padding-bottom: 100px !important;
+            padding-bottom: 0 !important;
+        }
+        
+        /* Ensure proper spacing after messages */
+        .stChatMessageContainer {
+            margin-bottom: 1rem !important;
         }
 
         /* Chat messages container */
@@ -488,36 +494,40 @@ def apply_professional_styles():
             }
             .stChatFloatingInputContainer {
                 padding: 0.5rem !important;
-                margin-top: 0.5rem !important;
+                margin-top: 1rem !important;
             }
             .stMainBlockContainer {
-                padding-bottom: 80px !important;
+                padding-bottom: 0 !important;
             }
         }
     </style>
     
     <script>
-        // Auto-scroll to bottom when new messages are added
-        function scrollToBottom() {
+        // Auto-scroll to bottom to show chat input after new messages
+        function scrollToShowInput() {
             setTimeout(() => {
-                const chatContainer = document.querySelector('.stChatMessageContainer');
-                if (chatContainer) {
-                    chatContainer.scrollTop = chatContainer.scrollHeight;
+                // Find the chat input container
+                const chatInput = document.querySelector('.stChatFloatingInputContainer');
+                if (chatInput) {
+                    chatInput.scrollIntoView({ 
+                        behavior: 'smooth', 
+                        block: 'end' 
+                    });
+                } else {
+                    // Fallback: scroll to bottom of page
+                    window.scrollTo({
+                        top: document.body.scrollHeight,
+                        behavior: 'smooth'
+                    });
                 }
-                
-                // Also scroll the main window
-                window.scrollTo({
-                    top: document.body.scrollHeight,
-                    behavior: 'smooth'
-                });
-            }, 100);
+            }, 300);
         }
         
         // Observer for new messages
         const observer = new MutationObserver((mutations) => {
             mutations.forEach((mutation) => {
                 if (mutation.type === 'childList') {
-                    scrollToBottom();
+                    scrollToShowInput();
                 }
             });
         });
@@ -697,9 +707,9 @@ def main():
                     "products": products
                 })
                 
-                # Auto-scroll to show new message
+                # Auto-scroll to show chat input after new message
                 st.markdown(
-                    '<script>setTimeout(() => { window.scrollTo(0, document.body.scrollHeight); }, 100);</script>', 
+                    '<script>setTimeout(() => { if (typeof scrollToShowInput !== "undefined") { scrollToShowInput(); } else { window.scrollTo(0, document.body.scrollHeight); } }, 200);</script>', 
                     unsafe_allow_html=True
                 )
                 
@@ -717,9 +727,9 @@ def main():
                     "products": []
                 })
                 
-                # Auto-scroll to show error message
+                # Auto-scroll to show chat input after error message
                 st.markdown(
-                    '<script>setTimeout(() => { window.scrollTo(0, document.body.scrollHeight); }, 100);</script>', 
+                    '<script>setTimeout(() => { if (typeof scrollToShowInput !== "undefined") { scrollToShowInput(); } else { window.scrollTo(0, document.body.scrollHeight); } }, 200);</script>', 
                     unsafe_allow_html=True
                 )
 

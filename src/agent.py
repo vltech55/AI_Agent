@@ -152,6 +152,14 @@ class KingArthurBakingAgent:
             model=settings.llm_model,
             temperature=settings.temperature
         )
+        self.query_generator = ChatOpenAI(
+            model=settings.llm_model,
+            temperature=settings.temperature
+        )
+        self.field_generator = ChatOpenAI(
+            model=settings.llm_model,
+            temperature=settings.temperature
+        )
         # Use provided database manager or create new one
         self.db_manager = db_manager if db_manager is not None else MongoDBManager()
         # Create the tool with access to db_manager
@@ -171,7 +179,7 @@ class KingArthurBakingAgent:
             try:
                 print(f"[{self.user_id}] Retrieving information for {query}")
                 
-                self.extract_fields = self.generate_necessary_fields(query)
+                self.extract_fields = self.generate_necessary_fields(query, "")
                 search_results = self.db_manager.hybrid_search(query)
                 if search_results:
                     # Format results for the LLM
@@ -189,7 +197,7 @@ class KingArthurBakingAgent:
         
         return retrieve_information
     
-    def generate_necessary_fields(self, query: str) -> List[str]:
+    def generate_necessary_fields(self, query: str, mongo_query: str) -> List[str]:
         """Generate the final response to the user."""
         try:
             response_prompt = ChatPromptTemplate.from_messages([
@@ -239,6 +247,14 @@ class KingArthurBakingAgent:
                 mongo_query: [{"$group": {"_id": "$custom_fields._flavor_label", "count": {"$sum": 1}}}]
                 fields: ["_id", "count"]
 
+                query: most fallen price product
+                mongo_query: [{"$sort": {"$sales_info.savings": -1}}, {"$limit": 1}]
+                fields: ["name", "plain_text_description", "sales_info"]
+
+                query: the product with the most reviews
+                mongo_query: [{"$sort": {"_review_count": -1}}, {"$limit": 1}]
+                fields: ["name", "price", "plain_text_description", "review_summary"]
+
                 query: total products count
                 mongo_query: [{"$count": "total_products"}]
                 fields: ["total_products"]
@@ -252,12 +268,13 @@ class KingArthurBakingAgent:
                 """),
                 HumanMessage(content=f"""
                     User Query: {query}
+                    MongoDB Query: {mongo_query}
                 """)
             ])
 
             print(f"[{self.user_id}] Generating necessary fields")
             
-            response = self.llm.invoke(response_prompt.format_messages())
+            response = self.field_generator.invoke(response_prompt.format_messages())
             print(f"[{self.user_id}] Generated necessary fields: {response.content}")
             try:
                 # Ensure response.content is a string before parsing
@@ -417,7 +434,7 @@ class KingArthurBakingAgent:
                     HumanMessage(content=f"User query: {query}")
                 ])
                 
-                response = self.llm.invoke(query_prompt.format_messages())
+                response = self.query_generator.invoke(query_prompt.format_messages())
                 print(f"[{self.user_id}] Generated MongoDB query: {response.content}")
                 
                 # Parse the response as JSON
@@ -450,7 +467,7 @@ class KingArthurBakingAgent:
                 else:
                     search_results = []
                     
-                self.extract_fields = self.generate_necessary_fields(query)
+                self.extract_fields = self.generate_necessary_fields(query, response_content)
                 
                 if search_results:
                     # Format results for the LLM
