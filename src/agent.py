@@ -97,7 +97,7 @@ custom_fields_description = """Here's an brief explanation of each field:
 {
 name: The name of the product.
 SKU: (Stock Keeping Unit)A unique identifier for the product used for inventory management.
-price: The price of the product.
+price: The price of the product. This field is for additional information. You should not use this field for search but only for sort. All the search about price should be done with the sales_info field.
 url: The page of website https://shop.kingarthurbaking.com/ that describes about this product. This field is usually https://shop.kingarthurbaking.com/{path}
 aria_label: The label that showed in the https://shop.kingarthurbaking.com/ usually contains name and price info.
 entity_id: The number to identify the product. It is used to get the product review details.
@@ -489,6 +489,14 @@ class KingArthurBakingAgent:
                     query: show all the products under $50
                     pipeline:[
                         {{"$match": {{"price": {{"$lt": 50}}}}}},
+                        {{"$sort": {{"price": -1}}}},
+                        {{"$limit": 10}}
+                    ]
+
+                    query: show all the products more expensive than $50
+                    pipeline:[
+                        {{"$match": {{"price": {{"$gt": 50}}}}}},
+                        {{"$sort": {{"price": 1}}}},
                         {{"$limit": 10}}
                     ]
 
@@ -501,6 +509,7 @@ class KingArthurBakingAgent:
                     ***
                     Always use $match to filter the documents especially for avoiding none or null values.
                     Always use $limit to limit the documents and reduce the response.
+                    Always use $sort to sort the documents by the price. ascending or descending is due to the user query.
                     If there might be lots of documents as a result you should use limit and sort.
 
                     Generate a valid MongoDB aggregation pipeline (as JSON array) that can be used with collection.aggregate(pipeline).
@@ -690,7 +699,7 @@ class KingArthurBakingAgent:
         """Estimate token count for text (rough approximation)."""
         return int(len(text.split()) * 1.3)  # Rough estimate: 1.3 tokens per word
     
-    def _truncate_conversation_history(self, messages: List[Any], max_tokens: int = 30000) -> List[Any]:
+    def _truncate_conversation_history(self, messages: List[Any], max_tokens: int = 200000) -> List[Any]:
         """Truncate conversation history to stay within token limits."""
         if not messages:
             return messages

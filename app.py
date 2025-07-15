@@ -71,6 +71,9 @@ def apply_professional_styles():
             border-top: 1px solid var(--border) !important;
             padding: 1rem !important;
             margin: 0 !important;
+            display: flex !important;
+            justify-content: center !important;
+            align-items: center !important;
         }
         
         /* Adjust for sidebar on desktop */
@@ -80,11 +83,19 @@ def apply_professional_styles():
             }
         }
         
-        /* Ensure chat input styling */
+        /* Center and constrain chat input styling */
         .stChatInputContainer {
-            margin-left: 0 !important;
-            margin-right: 0 !important;
-            max-width: 100% !important;
+            margin: 0 auto !important;
+            max-width: 800px !important;
+            width: 100% !important;
+            box-sizing: border-box !important;
+        }
+        
+        /* Ensure proper spacing around centered input */
+        .stChatFloatingInputContainer > div {
+            width: 100% !important;
+            max-width: 800px !important;
+            margin: 0 auto !important;
         }
         
         /* Add padding to main content so last message isn't hidden */
@@ -504,6 +515,12 @@ def apply_professional_styles():
                 padding: 0.5rem !important;
                 left: 0 !important; /* Full width on mobile */
                 right: 0 !important;
+                display: flex !important;
+                justify-content: center !important;
+                align-items: center !important;
+            }
+            .stChatInputContainer {
+                max-width: 95% !important; /* Slightly smaller on mobile for better margins */
             }
             .stMainBlockContainer {
                 padding-bottom: 140px !important; /* Less padding on mobile */
