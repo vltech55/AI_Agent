@@ -60,6 +60,30 @@ def apply_professional_styles():
             margin: 0 auto;
         }
 
+        /* Chat container scrolling */
+        .stChatFloatingInputContainer {
+            position: fixed !important;
+            bottom: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            z-index: 1000 !important;
+            background: var(--background) !important;
+            border-top: 1px solid var(--border) !important;
+            padding: 1rem !important;
+        }
+
+        /* Chat messages container */
+        .stChatMessageContainer {
+            max-height: calc(100vh - 200px) !important;
+            overflow-y: auto !important;
+            padding-bottom: 120px !important;
+        }
+
+        /* Ensure proper scrolling */
+        .stApp {
+            overflow-y: auto !important;
+        }
+
         /* Simple Background */
         .stApp {
             background: var(--background) !important;
@@ -451,8 +475,47 @@ def apply_professional_styles():
             .sidebar-section {
                 padding: 1rem;
             }
+            .stChatFloatingInputContainer {
+                padding: 0.5rem !important;
+            }
         }
     </style>
+    
+    <script>
+        // Auto-scroll to bottom when new messages are added
+        function scrollToBottom() {
+            setTimeout(() => {
+                const chatContainer = document.querySelector('.stChatMessageContainer');
+                if (chatContainer) {
+                    chatContainer.scrollTop = chatContainer.scrollHeight;
+                }
+                
+                // Also scroll the main window
+                window.scrollTo({
+                    top: document.body.scrollHeight,
+                    behavior: 'smooth'
+                });
+            }, 100);
+        }
+        
+        // Observer for new messages
+        const observer = new MutationObserver((mutations) => {
+            mutations.forEach((mutation) => {
+                if (mutation.type === 'childList') {
+                    scrollToBottom();
+                }
+            });
+        });
+        
+        // Start observing when DOM is ready
+        document.addEventListener('DOMContentLoaded', () => {
+            const targetNode = document.body;
+            observer.observe(targetNode, {
+                childList: true,
+                subtree: true
+            });
+        });
+    </script>
     """, unsafe_allow_html=True)
 
 @st.cache_resource
@@ -619,6 +682,12 @@ def main():
                     "products": products
                 })
                 
+                # Auto-scroll to show new message
+                st.markdown(
+                    '<script>setTimeout(() => { window.scrollTo(0, document.body.scrollHeight); }, 100);</script>', 
+                    unsafe_allow_html=True
+                )
+                
             except Exception as e:
                 error_msg = "Sorry, I encountered an error. Please try again."
                 logger.error(f"Chat error: {e}")
@@ -632,6 +701,12 @@ def main():
                     "content": error_msg, 
                     "products": []
                 })
+                
+                # Auto-scroll to show error message
+                st.markdown(
+                    '<script>setTimeout(() => { window.scrollTo(0, document.body.scrollHeight); }, 100);</script>', 
+                    unsafe_allow_html=True
+                )
 
 # --- [ HELPER FUNCTIONS ] ---
 def render_product_cards(products: List[Dict]):
