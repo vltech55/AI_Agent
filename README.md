@@ -21,6 +21,7 @@
 - [Overview](#overview)
 - [Features](#features)
 - [Architecture](#architecture)
+- [Screenshots](#screenshots)
 - [Tech Stack](#tech-stack)
 - [Installation](#installation)
 - [Configuration](#configuration)
@@ -45,6 +46,19 @@ Demonstrates the standard production shape of a domain-specific RAG assistant �
 - **LangGraph agent** — multi-node flow: analyse-query → route → search/recommend/compare → reason → respond. State is a `TypedDict`; transitions are explicit conditional edges.
 - **Streamlit UI** — chat interface plus an in-product agent workflow visualizer (the LangGraph rendered live) and simple analytics on the indexed corpus.
 - **Hugging Face Spaces ready** — deploys as a Streamlit Space with environment-variable config.
+
+## Screenshots
+
+<table>
+<tr>
+<td width="50%"><img src="docs/screenshots/landing.png"   alt="Landing — hero, search box, sample prompts (recommend / compare / search), live system status"></td>
+<td width="50%"><img src="docs/screenshots/chat.png"      alt="Chat — agent reasoning trace, grounded answer, product cards with similarity scores"></td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/workflow.png"  alt="Agent graph — LangGraph state machine with the path taken on the last run, AgentState schema, run stats"></td>
+<td><img src="docs/screenshots/analytics.png" alt="Analytics — KPI tiles, price distribution, category donut, feature tag counts, embedding health"></td>
+</tr>
+</table>
 
 ## Architecture
 
