@@ -1,273 +1,200 @@
-# 🍰 King Arthur Baking AI Assistant
+<div align="center">
 
-A sophisticated AI-powered assistant for King Arthur Baking mixes using RAG (Retrieval-Augmented Generation) with LangGraph, OpenAI, and MongoDB Atlas.
+# King Arthur Baking AI
 
-## 🚀 Features
+**RAG-powered product-catalog assistant. Scrape → embed → store in MongoDB Atlas Vector Search → answer with a LangGraph agent that chooses between semantic search, recommendation, and side-by-side comparison. Streamlit chat UI with an inline workflow visualizer.**
 
-- **Intelligent Web Scraping**: Automatically scrapes the King Arthur Baking mixes category
-- **RAG System**: Combines semantic search with OpenAI embeddings for accurate product recommendations
-- **LangGraph Agent**: Advanced AI agent with multi-step reasoning and tool use
-- **MongoDB Atlas Integration**: Vector search and document storage
-- **Streamlit Frontend**: Beautiful, interactive web interface
-- **Real-time Analytics**: Product insights and data visualization
+[![Python 3.11](https://img.shields.io/badge/python-3.11-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![LangGraph](https://img.shields.io/badge/LangGraph-multi--node-1C3C3C)](https://github.com/langchain-ai/langgraph)
+[![LangChain](https://img.shields.io/badge/LangChain-0.3-0096FF)](https://www.langchain.com/)
+[![OpenAI GPT-4o](https://img.shields.io/badge/OpenAI-GPT--4o-412991?logo=openai&logoColor=white)](https://openai.com/)
+[![MongoDB Atlas](https://img.shields.io/badge/MongoDB%20Atlas-vector%20search-47A248?logo=mongodb&logoColor=white)](https://www.mongodb.com/atlas)
+[![Streamlit](https://img.shields.io/badge/Streamlit-frontend-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-## 🛠️ Technology Stack
+</div>
 
-- **Frontend**: Streamlit with custom CSS styling
-- **AI Framework**: LangGraph + LangChain
-- **LLM**: OpenAI GPT-4o
-- **Embeddings**: OpenAI text-embedding-3-small
-- **Database**: MongoDB Atlas
-- **Web Scraping**: BeautifulSoup4 + Requests
-- **Visualization**: Plotly
-- **Deployment**: Hugging Face Spaces
+---
 
-## 📦 Installation
+## Table of Contents
 
-1. **Clone the repository**:
+- [Overview](#overview)
+- [Features](#features)
+- [Architecture](#architecture)
+- [Tech Stack](#tech-stack)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Agent Workflow](#agent-workflow)
+- [Usage Examples](#usage-examples)
+- [Project Structure](#project-structure)
+- [Deployment](#deployment)
+- [Author](#author)
+- [License](#license)
 
-   ```bash
-   git clone <repository-url>
-   cd king-arthur-baking-ai
-   ```
+## Overview
 
-2. **Install dependencies**:
+A reference implementation of a catalog-grounded AI assistant: scrape a product catalog (here, King Arthur Baking mixes), generate embeddings, store them in MongoDB Atlas Vector Search, then answer user questions through a LangGraph agent that routes between semantic search, structured recommendation, and product-vs-product comparison.
 
-   ```bash
-   pip install -r requirements.txt
-   ```
+Demonstrates the standard production shape of a domain-specific RAG assistant — query routing, structured tool use, response synthesis with explicit reasoning steps — in under approximately 1,500 lines of code.
 
-3. **Set up environment variables**:
-   Create a `.env` file in the root directory:
+## Features
 
-   ```
-   OPENAI_API_KEY=your_openai_api_key_here
-   MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/
-   MONGODB_DB_NAME=king_arthur_baking_db
-   MONGODB_COLLECTION_NAME=mixes
-   ```
+- **Catalog scraping** — `BeautifulSoup` + `requests` extract product names, descriptions, ingredients, instructions, prices, and image URLs. Resumable, dedup on URL, polite delays.
+- **Embeddings pipeline** — OpenAI `text-embedding-3-small`, batched, stored in MongoDB Atlas with a Vector Search index.
+- **Hybrid retrieval** — combines MongoDB text search with vector similarity for keyword-anchored queries (e.g., specific product names) while still matching paraphrases.
+- **LangGraph agent** — multi-node flow: analyse-query → route → search/recommend/compare → reason → respond. State is a `TypedDict`; transitions are explicit conditional edges.
+- **Streamlit UI** — chat interface plus an in-product agent workflow visualizer (the LangGraph rendered live) and simple analytics on the indexed corpus.
+- **Hugging Face Spaces ready** — deploys as a Streamlit Space with environment-variable config.
 
-## 🔧 Configuration
+## Architecture
 
-The application uses several configuration parameters that can be adjusted in `config.py`:
+```
+              ┌──────────────────┐
+              │  King Arthur     │
+              │  Baking website  │
+              └────────┬─────────┘
+                       │ scrape (BeautifulSoup)
+                       ▼
+              ┌──────────────────┐
+              │  mixes_data.json │
+              └────────┬─────────┘
+                       │ load + embed (text-embedding-3-small)
+                       ▼
+              ┌──────────────────────────────┐
+              │  MongoDB Atlas               │
+              │  • mixes (documents)         │
+              │  • mixes (vector index)      │
+              └────────┬─────────────────────┘
+                       │
+   ┌───────────────────┴─────────────────────┐
+   │   LangGraph agent                       │
+   │                                          │
+   │   analyse_query                          │
+   │        │                                 │
+   │        ▼                                 │
+   │   route_decision  ──┬─▶  search          │
+   │        │            ├─▶  recommend       │
+   │        │            └─▶  compare         │
+   │        ▼                                 │
+   │   reason                                 │
+   │        │                                 │
+   │        ▼                                 │
+   │   respond                                │
+   └───────────────────┬─────────────────────┘
+                       │
+                       ▼
+              ┌──────────────────┐
+              │  Streamlit chat  │
+              │  + graph view    │
+              │  + analytics     │
+              └──────────────────┘
+```
 
-- **API Keys**: OpenAI API key for LLM and embeddings
-- **Database**: MongoDB Atlas connection string and collection names
-- **Scraping**: Delay between requests and retry limits
-- **Agent**: Temperature, max tokens, and model parameters
+## Tech Stack
 
-## 🕷️ Data Scraping
+| Layer | Technology |
+|---|---|
+| Agent framework | LangGraph + LangChain 0.3 |
+| LLM | OpenAI `gpt-4o` |
+| Embeddings | OpenAI `text-embedding-3-small` |
+| Vector store | MongoDB Atlas (Vector Search index) |
+| Scraping | `requests` + `BeautifulSoup4` |
+| Frontend | Streamlit (chat + graph visualizer + analytics) |
+| Visualization | Plotly (price distribution, feature analysis) |
+| Deployment | Hugging Face Spaces (Streamlit SDK) |
+| Language | Python 3.11+ |
 
-The scraper automatically extracts comprehensive product information:
-
-- Product names and descriptions
-- Pricing information
-- Ingredients and nutritional details
-- Instructions and features
-- Product images and URLs
-- Availability status
-
-### Running the Scraper
+## Installation
 
 ```bash
+git clone https://github.com/vltech55/AI_Agent.git
+cd AI_Agent
+pip install -r requirements.txt
+
+# .env
+cat > .env <<'EOF'
+OPENAI_API_KEY=sk-...
+MONGODB_URI=mongodb+srv://user:pass@cluster.mongodb.net/
+MONGODB_DB_NAME=king_arthur_baking_db
+MONGODB_COLLECTION_NAME=mixes
+EOF
+
+# 1. Scrape catalog (writes mixes_data.json)
 python scraper.py
-```
 
-This will:
-
-1. Scrape all mixes from the King Arthur Baking website
-2. Save data to `mixes_data.json` (avoiding duplicates)
-3. Display scraping statistics
-
-## 🗄️ Database Setup
-
-### MongoDB Atlas Configuration
-
-1. Create a MongoDB Atlas account
-2. Create a new cluster
-3. Get your connection string
-4. Update the `MONGODB_URI` in your `.env` file
-
-### Loading Data
-
-```bash
+# 2. Load into Mongo + embed
 python database.py
+
+# 3. Launch the app
+streamlit run app.py
 ```
 
-This will:
+Open <http://localhost:8501>. The chat UI is the primary surface; the workflow graph and analytics tabs are next to it.
 
-1. Connect to MongoDB Atlas
-2. Load data from the JSON file
-3. Generate embeddings for all products
-4. Create necessary indexes
+## Configuration
 
-## 🤖 AI Agent
+All knobs live in `config.py`:
 
-The LangGraph agent features:
+| Group | Setting | Notes |
+|---|---|---|
+| API | `OPENAI_API_KEY` | for `gpt-4o` and embeddings |
+| Database | `MONGODB_URI`, `MONGODB_DB_NAME`, `MONGODB_COLLECTION_NAME` | Atlas cluster + collection |
+| Scraper | `REQUEST_DELAY`, `MAX_RETRIES` | polite scraping defaults |
+| Agent | `MODEL`, `TEMPERATURE`, `MAX_TOKENS` | LLM call parameters |
 
-- **Query Analysis**: Understands user intent and extracts key information
-- **Multi-Modal Search**: Combines semantic and text search
-- **Product Recommendations**: Personalized suggestions based on preferences
-- **Product Comparison**: Side-by-side analysis of different mixes
-- **Reasoning**: Advanced analysis and insights about products
+## Agent Workflow
 
-### Agent Workflow
+1. **Analyse query** — extract intent (search / recommend / compare) and key features (dietary, skill level, product type).
+2. **Route decision** — conditional edge picks one of three search strategies.
+3. **Search / Recommend / Compare** — runs the selected MongoDB query (semantic, hybrid, or paired).
+4. **Reason** — second LLM pass to ground the response in the retrieved documents.
+5. **Respond** — final natural-language answer with product references.
 
-1. **Analyze Query**: Determine intent and extract keywords
-2. **Route Decision**: Choose appropriate search strategy
-3. **Search/Recommend/Compare**: Execute the chosen action
-4. **Reasoning**: Analyze results and provide insights
-5. **Response Generation**: Create helpful, detailed responses
+The Streamlit "Agent Graph" tab renders this state machine live so users can see *why* the assistant answered a particular way.
 
-## 🎨 Frontend Features
+## Usage Examples
 
-The Streamlit interface includes:
+```
+"I'm looking for a chocolate cake mix"
+"Recommend some easy mixes for beginners"
+"Compare different pancake mixes"
+"What ingredients are in your bread mixes?"
+```
 
-- **Chat Interface**: Natural language interaction with the AI
-- **Agent Graph**: Visual representation of the AI workflow
-- **Product Cards**: Rich product information display
-- **Analytics Dashboard**: Data insights and visualizations
-- **Control Panel**: Scraping and embedding management
+## Project Structure
 
-## 📊 Analytics
+```
+app.py             Streamlit entry point (chat UI + workflow graph + analytics).
+agent.py           LangGraph agent: node functions + graph wiring + state schema.
+scraper.py         Catalog scraper (BeautifulSoup, resumable, dedup on URL).
+database.py        Mongo loader + embedding generator + Vector Search index setup.
+embeddings.py      EmbeddingService — batch embed, semantic / hybrid search.
+config.py          All configuration (env vars + tunables).
+requirements.txt   Python dependencies.
+mixes_data.json    Scraped corpus (output of scraper.py).
+```
 
-The application provides:
-
-- **Price Distribution**: Analysis of product pricing
-- **Feature Analysis**: Most common product features
-- **Database Statistics**: Product counts and embedding status
-- **Search Performance**: Query analysis and results
-
-## 🚀 Deployment
+## Deployment
 
 ### Hugging Face Spaces
 
-1. Create a new Space on Hugging Face
-2. Choose "Streamlit" as the SDK
-3. Upload your code files
-4. Set environment variables in the Space settings
-5. The app will automatically deploy
+1. Create a new Space (SDK: Streamlit).
+2. Push this repo.
+3. Set `OPENAI_API_KEY` and `MONGODB_*` as Space secrets.
+4. Space autobuilds and serves Streamlit on the public URL.
 
-### Local Development
+### Local development
 
 ```bash
 streamlit run app.py
 ```
 
-## 📋 Usage Examples
+## Author
 
-### Basic Product Search
+**Vlad L.** — independent senior engineer specializing in production-grade LLM systems (RAG, agents, gateways, multi-tenant SaaS).
 
-```
-"I'm looking for a chocolate cake mix"
-```
+[![GitHub](https://img.shields.io/badge/GitHub-vltech55-181717?logo=github)](https://github.com/vltech55)
 
-### Recommendations
+## License
 
-```
-"Can you recommend some easy baking mixes for beginners?"
-```
-
-### Product Comparison
-
-```
-"Compare different pancake mixes"
-```
-
-### Ingredient Information
-
-```
-"What ingredients are in your bread mixes?"
-```
-
-## 🔍 API Reference
-
-### Main Classes
-
-#### `KingArthurScraper`
-
-- `scrape_all_mixes()`: Scrape all products from the website
-- `save_to_json()`: Save data to JSON file avoiding duplicates
-
-#### `MongoDBManager`
-
-- `insert_products()`: Insert products into database
-- `search_products()`: Text-based search
-- `semantic_search()`: Embedding-based search
-
-#### `EmbeddingService`
-
-- `generate_embedding()`: Create embeddings for text
-- `semantic_search()`: Find similar products
-- `hybrid_search()`: Combine semantic and text search
-
-#### `KingArthurBakingAgent`
-
-- `chat()`: Main chat interface
-- `get_graph_visualization()`: Get agent workflow graph
-
-## 🛡️ Error Handling
-
-The application includes comprehensive error handling:
-
-- **Connection Errors**: Automatic retry with exponential backoff
-- **API Rate Limits**: Proper delays and batch processing
-- **Data Validation**: Input sanitization and type checking
-- **Graceful Degradation**: Fallback options when services are unavailable
-
-## 📈 Performance Optimization
-
-- **Batch Processing**: Embeddings generated in batches
-- **Caching**: Frequent queries cached for faster response
-- **Indexing**: MongoDB indexes for efficient search
-- **Rate Limiting**: Respectful scraping with delays
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
-
-## 📄 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## 🙏 Acknowledgments
-
-- King Arthur Baking for their excellent products and website
-- OpenAI for the powerful GPT-4o and embedding models
-- MongoDB Atlas for the vector database capabilities
-- Streamlit for the beautiful web interface framework
-- LangGraph for the advanced agent workflow capabilities
-
-## 🐛 Troubleshooting
-
-### Common Issues
-
-1. **Connection Errors**: Check your internet connection and API keys
-2. **Rate Limiting**: Reduce scraping frequency or batch sizes
-3. **Memory Issues**: Limit the number of products processed at once
-4. **Authentication**: Verify your MongoDB Atlas and OpenAI credentials
-
-### Support
-
-For issues and questions:
-
-1. Check the logs for detailed error messages
-2. Verify all environment variables are set correctly
-3. Ensure all dependencies are installed
-4. Check the MongoDB Atlas connection and permissions
-
-## 📝 Changelog
-
-### Version 1.0.0
-
-- Initial release
-- Web scraping functionality
-- MongoDB Atlas integration
-- OpenAI embeddings and chat
-- LangGraph agent workflow
-- Streamlit frontend
-- Hugging Face Spaces deployment ready
+[MIT](LICENSE) © Vlad L.
